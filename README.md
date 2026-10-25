@@ -17,6 +17,7 @@ or from a local clone:
     cutlist-optimiser example.toml                 # print the wall layout and cut list
     cutlist-optimiser example.toml --svg plan.svg  # also draw walls and cutting diagrams
     cutlist-optimiser example.toml -n 20000        # search longer (default 3000 iterations)
+    cutlist-optimiser example.toml --seed 7        # use a different random seed (default 0)
 
 While it searches, a progress bar showing the current best sheet count is printed to stderr (only in a terminal).
 
@@ -43,7 +44,7 @@ Copy `example.toml` and edit it. All sizes are in mm.
 
 The cut list starts with the sheet utilisation: how much of the bought sheet area ends up in pieces, and how much is wasted as offcuts and saw kerf. Each sheet also shows how much of it is used.
 
-The output compares the sheet count with the area lower bound. If they match, the result is optimal. The search is a heuristic, so a higher `-n` or another `--seed` can sometimes save a sheet.
+The output compares the sheet count with the area lower bound. If they match, the result is optimal. The search is a heuristic, so a higher `-n` or another `--seed` can sometimes save a sheet. The seed used is printed at the top of the output. The same file, `-n` and seed always give the same result.
 
 The SVG shows every wall with its studs, noggins (thick lines), stay-out areas (crossed out) and pieces. Below that, each sheet is drawn whole with its pieces marked on it. Red dashed lines are the guillotine cuts, numbered in the order to make them, and hatched areas are offcuts.
 

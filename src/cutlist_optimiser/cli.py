@@ -35,12 +35,13 @@ def f(v):
     return f"{v:.1f}".rstrip("0").rstrip(".")
 
 
-def report(s, walls, res, out=sys.stdout):
+def report(s, walls, res, seed, out=sys.stdout):
     p = lambda *a: print(*a, file=out)
     H = s.height - s.bottom_gap - s.top_gap
     p(f"Sheet size {f(max(s.sheet))} x {f(min(s.sheet))} mm, wall height {f(s.height)} mm, "
       f"bottom gap {f(s.bottom_gap)}, top gap {f(s.top_gap)} -> {f(H)} mm to cover")
     p(f"Kerf {f(s.kerf)} mm, joint gap {f(s.joint_gap)} mm (half taken off each side of a joint)")
+    p(f"Random seed {seed}")
     p()
     p("WALL LAYOUT  (x from wall start, y from floor; piece labels are wall.column+letter, a = bottom)")
     for wall, cols in zip(walls, res.walls):
@@ -176,7 +177,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="Cutlist Optimiser: sheet material layout and cut list for stud walls")
     ap.add_argument("config", help="TOML file describing walls (see example.toml)")
     ap.add_argument("-n", "--iterations", type=int, default=3000, help="search iterations (default 3000)")
-    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--seed", type=int, default=0, help="random seed for the search (default 0)")
     ap.add_argument("--svg", metavar="FILE", help="also write a drawing of the layout and sheets")
     args = ap.parse_args(argv)
     try:
@@ -185,7 +186,7 @@ def main(argv=None):
         res = Solver(s, walls, args.seed).solve(args.iterations, progress)
     except (ValueError, KeyError, OSError, tomllib.TOMLDecodeError) as e:
         sys.exit(f"error: {e}")
-    report(s, walls, res)
+    report(s, walls, res, args.seed)
     if args.svg:
         svg(s, walls, res, args.svg)
         print(f"\nDrawing written to {args.svg}")

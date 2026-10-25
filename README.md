@@ -2,20 +2,23 @@
 
 Works out the fewest fixed-size sheets (plasterboard, plywood, OSB, ...) needed to line stud walls, with regularly or irregularly spaced studs, and gives you a cut list.
 
-## Install (Arch Linux)
+## Install
 
-Needs Python 3.11 or newer and has no dependencies.
+Needs Python 3.11 or newer and has no dependencies. Install it with pip, ideally inside a virtual environment:
 
-    sudo pacman -S python-pipx
-    pipx install /path/to/cutlist-optimiser
+    pip install git+https://github.com/SeanDS/cutlist-optimiser
 
-You can also use a venv: `python -m venv .venv && .venv/bin/pip install .`
+or from a local clone:
+
+    pip install .
 
 ## Use
 
     cutlist-optimiser example.toml                 # print the wall layout and cut list
     cutlist-optimiser example.toml --svg plan.svg  # also draw it
     cutlist-optimiser example.toml -n 20000        # search longer (default 3000 iterations)
+
+While it searches, a progress bar showing the current best sheet count is printed to stderr (only in a terminal).
 
 Copy `example.toml` and edit it. All sizes are in mm.
 

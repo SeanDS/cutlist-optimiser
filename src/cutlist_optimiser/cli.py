@@ -106,6 +106,16 @@ def svg(s, walls, res, path, scale=0.1):
                  f'<rect width="100%" height="100%" fill="#fff"/>{"".join(parts)}</svg>\n')
 
 
+def progress_bar(done, total, best, width=30):
+    """Draw a one-line progress bar on stderr, redrawn about once per percent."""
+    if done != total and done % max(1, total // 100):
+        return
+    filled = width * done // max(total, 1)
+    end = "\n" if done == total else ""
+    print(f"\rSearching [{'#' * filled}{'.' * (width - filled)}] {done}/{total}  best: {best} sheets",
+          end=end, file=sys.stderr, flush=True)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Cutlist Optimiser: sheet material layout and cut list for stud walls")
     ap.add_argument("config", help="TOML file describing walls (see example.toml)")
@@ -115,7 +125,8 @@ def main(argv=None):
     args = ap.parse_args(argv)
     try:
         s, walls = load(args.config)
-        res = Solver(s, walls, args.seed).solve(args.iterations)
+        progress = progress_bar if sys.stderr.isatty() else None
+        res = Solver(s, walls, args.seed).solve(args.iterations, progress)
     except (ValueError, KeyError, OSError, tomllib.TOMLDecodeError) as e:
         sys.exit(f"error: {e}")
     report(s, walls, res)

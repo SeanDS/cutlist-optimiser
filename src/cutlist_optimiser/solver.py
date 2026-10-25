@@ -204,11 +204,14 @@ class Solver:
             off = 0
         return (n, off, len(pieces), -offcut)
 
-    def solve(self, iterations=3000):
+    def solve(self, iterations=3000, progress=None):
+        """Search for the best layout. `progress(done, total, best_sheets)` is called each iteration."""
         current = tuple(self.random_wall(wi, greedy=True) for wi in range(len(self.walls)))
         cur_score = self.evaluate(current)
         best, best_score = current, cur_score
-        for _ in range(iterations):
+        for it in range(iterations):
+            if progress:
+                progress(it, iterations, best_score[0])
             cand = list(current)
             r = self.rng.random()
             if r < 0.1:
@@ -232,6 +235,8 @@ class Solver:
                 current, cur_score = cand, score
                 if score < best_score:
                     best, best_score = cand, score
+        if progress:
+            progress(iterations, iterations, best_score[0])
         return self.result(best)
 
     def result(self, state):

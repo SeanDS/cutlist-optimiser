@@ -14,7 +14,7 @@ def load(path):
     if "noggins" in data:
         raise ValueError("noggins must be set per wall, as one list of heights per stud bay")
     for key in ("height", "bottom_gap", "top_gap", "kerf", "joint_gap", "min_piece", "noggin_joints",
-                "noggin_tolerance"):
+                "noggin_tolerance", "thickness"):
         if key in data:
             setattr(s, key, data[key])
     if "sheet" in data:
@@ -25,7 +25,8 @@ def load(path):
     for i, w in enumerate(data.get("walls", [])):
         stay_out = [(*a["x"], *a["y"]) for a in w.get("stay_out", [])]
         walls.append(Wall(w.get("name", f"Wall {i + 1}"), list(w["studs"]),
-                          list(w.get("noggins", [])), stay_out))
+                          list(w.get("noggins", [])), stay_out,
+                          w.get("start", "full"), w.get("end", "full")))
     if not walls:
         raise ValueError("no [[walls]] defined")
     return s, walls
@@ -40,7 +41,10 @@ def report(s, walls, res, seed, out=sys.stdout):
     H = s.height - s.bottom_gap - s.top_gap
     p(f"Sheet size {f(max(s.sheet))} x {f(min(s.sheet))} mm, wall height {f(s.height)} mm, "
       f"bottom gap {f(s.bottom_gap)}, top gap {f(s.top_gap)} -> {f(H)} mm to cover")
-    p(f"Kerf {f(s.kerf)} mm, joint gap {f(s.joint_gap)} mm (half taken off each side of a joint)")
+    p(f"Kerf {f(s.kerf)} mm, joint gap {f(s.joint_gap)} mm (half taken off each side of a joint), "
+      f"sheet thickness {f(s.thickness)} mm")
+    if s.stagger:
+        p(f"Staggering horizontal joints in neighbouring columns by at least {f(s.stagger)} mm")
     p(f"Random seed {seed}")
     p()
     p("WALL LAYOUT  (x from wall start, y from floor; piece labels are wall.column+letter, a = bottom)")
@@ -49,6 +53,11 @@ def report(s, walls, res, seed, out=sys.stdout):
           + ", ".join(f(x) for x in wall.positions))
         for x0, x1, y0, y1 in wall.stay_out:
             p(f"  stay out: x {f(x0)} - {f(x1)}, y {f(y0)} - {f(y1)}")
+        for side, corner in (("start", wall.start), ("end", wall.end)):
+            if corner == "inside":
+                p(f"  {side}: inside corner, sheets stop {f(s.thickness)} mm short to butt against the other wall")
+            elif corner == "outside":
+                p(f"  {side}: outside corner, sheets run {f(s.thickness)} mm past to cover the other wall's edge")
         for col in cols:
             if not col:
                 continue
@@ -76,6 +85,9 @@ def report(s, walls, res, seed, out=sys.stdout):
     if res.off_noggin and s.noggin_joints != "ignore":
         p(f"  note: {res.off_noggin} place(s) where a horizontal joint crosses a bay with no noggin "
           f"- add blocking there")
+    if res.aligned:
+        p(f"  note: {res.aligned} pair(s) of joints in neighbouring columns are less than "
+          f"{f(s.stagger)} mm apart")
     for i, sh in enumerate(res.sheets, 1):
         p(f"\nSheet {i}:  {sh.used_area / sh.area:.1%} used  "
           f"(x along the {f(sh.width)} edge, y along the {f(sh.height)} edge)")
@@ -179,9 +191,12 @@ def main(argv=None):
     ap.add_argument("-n", "--iterations", type=int, default=3000, help="search iterations (default 3000)")
     ap.add_argument("--seed", type=int, default=0, help="random seed for the search (default 0)")
     ap.add_argument("--svg", metavar="FILE", help="also write a drawing of the layout and sheets")
+    ap.add_argument("--stagger", metavar="MM", type=float, nargs="?", const=200, default=0,
+                    help="stagger horizontal joints in neighbouring columns by at least MM (default 200)")
     args = ap.parse_args(argv)
     try:
         s, walls = load(args.config)
+        s.stagger = args.stagger
         progress = progress_bar if sys.stderr.isatty() else None
         res = Solver(s, walls, args.seed).solve(args.iterations, progress)
     except (ValueError, KeyError, OSError, tomllib.TOMLDecodeError) as e:

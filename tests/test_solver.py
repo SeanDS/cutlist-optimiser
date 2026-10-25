@@ -67,3 +67,27 @@ def test_door_to_ceiling_leaves_empty_column():
     wall = Wall("a", [600, 600], stay_out=[(600, 1200, 0, 2400)])
     res = solve([wall])
     assert all(p.x1 <= 600 for col in res.walls[0] for p in col)
+
+
+def test_corners_shrink_and_extend_wall():
+    wall = Wall("a", [600, 600], start="inside", end="outside")
+    res = solve([wall], thickness=12, joint_gap=0)
+    cols = res.walls[0]
+    assert cols[0][0].x0 == 12 and cols[-1][0].x1 == 1212
+
+
+def test_corner_needs_thickness():
+    try:
+        Solver(Settings(), [Wall("a", [600], start="inside")])
+    except ValueError:
+        return
+    raise AssertionError("expected ValueError")
+
+
+def test_stagger_offsets_neighbouring_joints():
+    walls = [Wall("a", [800, 800, 800], noggins=[[1200], [1200], [1200]])]
+    res = solve(walls, stagger=200)
+    assert res.aligned == 0
+    cols = [[p.y1 for p in col if p.joint_support] for col in res.walls[0]]
+    for left, right in zip(cols, cols[1:]):
+        assert all(abs(a - b) >= 200 for a in left for b in right)

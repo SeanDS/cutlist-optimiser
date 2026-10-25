@@ -5,12 +5,17 @@ top_gap = 0             # gap left at the ceiling
 sheet = [1200, 800]
 kerf = 3                # saw blade width (use 0 for score-and-snap)
 joint_gap = 3           # gap between neighbouring sheets at a joint
+thickness = 12          # sheet thickness, used at inside/outside corners
 min_piece = 100         # no piece narrower/shorter than this in height
 noggin_joints = "prefer"  # prefer | require | ignore horizontal joints on noggins
 noggin_tolerance = 10   # a joint within this of a noggin centre counts as on it
 
 # studs = distances between consecutive stud centres, from one wall end to the other.
 # Sheet edges can only land on these lines.
+# start / end = what happens at each corner:
+#   full    - sheets run to the end of the wall (default)
+#   inside  - inside corner, sheets stop short by the thickness to butt against the other wall's sheets
+#   outside - outside corner, sheets run past by the thickness to cover the other wall's sheet edge
 # noggins = one list per stud bay (gap between neighbouring studs), giving the noggin
 # centre heights from the floor in that bay. Use [] for a bay without noggins.
 [[walls]]
@@ -20,6 +25,8 @@ noggins = [[1200], [1150], [1200], [1150], [1200], [1150]]
 
 [[walls]]
 name = "East"
+start = "inside"
+end = "inside"
 studs = [400, 400, 400, 400, 400, 450]
 noggins = [[1200], [1150], [1200], [1150], [1200], [1150]]
 
@@ -34,5 +41,7 @@ stay_out = [
 
 [[walls]]
 name = "West"
+start = "inside"
+end = "inside"
 studs = [400, 400, 400, 400, 400, 450]
 noggins = [[1200], [1200], [1200], [1200], [1200], []]

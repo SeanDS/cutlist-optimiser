@@ -18,6 +18,8 @@ or from a local clone:
     cutlist-optimiser example.toml --svg plan.svg  # also draw walls and cutting diagrams
     cutlist-optimiser example.toml -n 20000        # search longer (default 3000 iterations)
     cutlist-optimiser example.toml --seed 7        # use a different random seed (default 0)
+    cutlist-optimiser example.toml --stagger       # stagger horizontal joints by at least 200 mm
+    cutlist-optimiser example.toml --stagger 300   # ... or by at least 300 mm
 
 While it searches, a progress bar showing the current best sheet count is printed to stderr (only in a terminal).
 
@@ -30,6 +32,13 @@ Copy `example.toml` and edit it. All sizes are in mm.
   * `require` only allows horizontal joints that are on a noggin in every bay they cross.
   * `ignore` doesn't consider noggins at all.
 * `stay_out` lists areas on a wall that get no sheets, such as windows or doors. Each one is written as `{ x = [from, to], y = [from, to] }`, with `x` measured from the wall start and `y` from the floor. Both `x` edges must be on studs, which is where the framing around an opening sits. Those studs always carry a vertical joint, and the columns under an opening are filled separately below and above it. An opening that reaches the floor or ceiling is fine.
+* `start` and `end` set what happens at each end of a wall:
+  * `full` (the default) runs the sheets to the end of the wall.
+  * `inside` is an inside corner where this wall's sheets butt against the other wall's sheets. They stop short by `thickness`.
+  * `outside` is an outside corner where this wall's sheets cover the other wall's sheet edge. They run past by `thickness`.
+
+  At each corner, set one wall to `full` and the other to `inside` or `outside`. `example.toml` runs the North and South walls full length, and the East and West walls butt into them.
+* `thickness` is the sheet thickness. You must set it to use `inside` or `outside` corners.
 * `bottom_gap` and `top_gap` are the gaps left at the floor and ceiling.
 * `joint_gap` is the gap between neighbouring sheets. Half of it comes off each edge that meets another sheet.
 * `kerf` is the blade width allowed between pieces cut from the same sheet. Set it to 0 if you score and snap.
@@ -48,6 +57,8 @@ The output compares the sheet count with the area lower bound. If they match, th
 
 The SVG shows every wall with its studs, noggins (thick lines), stay-out areas (crossed out) and pieces. Below that, each sheet is drawn whole with its pieces marked on it. Red dashed lines are the guillotine cuts, numbered in the order to make them, and hatched areas are offcuts.
 
+`--stagger` offsets the horizontal joints in neighbouring columns of a wall by at least the given distance (200 mm if no value is given), which makes the wall stronger. It is ranked above the sheet count, so the search avoids lined-up joints even when that costs a sheet. Within that, it still uses the fewest sheets and puts joints on noggins where it can. Run without `--stagger` to see what staggering costs. Any joints it couldn't stagger are listed in the notes under the cut list.
+
 Piece labels look like `2.3b`: wall 2, column 3, piece b (a is the bottom). Write them on the pieces as you cut.
 
-Not handled: staggering horizontal joints between neighbouring columns, and corner overlaps.
+

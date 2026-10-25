@@ -10,6 +10,10 @@ Model:
     noggin are preferred (or required, depending on settings).  Noggins are
     given per stud bay; a joint across a column spanning several bays is
     checked bay by bay.
+  * At a corner a wall's sheets can stop short by the sheet thickness (butting
+    against the other wall's sheets) or run past by it (covering the other
+    wall's sheet edge).
+  * Optionally, horizontal joints in neighbouring columns are staggered.
   * All pieces are then packed onto sheets; offcuts are reused.
 """
 
@@ -31,6 +35,11 @@ class Settings:
     min_piece: float = 100
     noggin_joints: str = "prefer"  # prefer | require | ignore
     noggin_tolerance: float = 10  # max distance of a joint from a noggin centre to count as on it
+    thickness: float = 0  # sheet thickness, used at inside/outside corners
+    stagger: float = 0  # min height difference between joints in neighbouring columns; 0 = off
+
+
+CORNERS = {"full": 0, "inside": 1, "outside": -1}  # sheet edge moves into the wall by this many thicknesses
 
 
 @dataclass
@@ -39,6 +48,8 @@ class Wall:
     studs: list  # separations between consecutive studs (centre to centre), wall end to wall end
     noggins: list = field(default_factory=list)  # per stud bay: list of noggin centre heights from floor
     stay_out: list = field(default_factory=list)  # (x0, x1, y0, y1) areas left unsheeted
+    start: str = "full"  # corner at the wall start: full | inside | outside
+    end: str = "full"  # corner at the wall end
 
     @property
     def positions(self):
@@ -72,6 +83,7 @@ class Result:
     sheets: list
     lower_bound: int
     off_noggin: int
+    aligned: int  # pairs of joints in neighbouring columns closer than the stagger distance
 
     @property
     def sheet_area(self):
@@ -92,10 +104,12 @@ def joint_support(y, bays, tol):
     return sum(any(abs(y - n) <= tol + EPS for n in bay) for bay in bays)
 
 
-def stack_options(H, hmax, bays, min_piece, mode, tol=10, keep=8):
+def stack_options(H, hmax, bays, min_piece, mode, tol=10, keep=8, ordered=False):
     """Ways to fill height H with pieces <= hmax.
 
     `bays` holds the noggin heights (relative to the panel bottom) of each stud bay the column spans.
+    With `ordered`, stacks with the same pieces in a different order (so joints at different
+    heights) are kept as separate options; otherwise only the best order is kept.
     """
     joints = sorted({n for bay in bays for n in bay})
     nmin = math.ceil(H / hmax - EPS)
@@ -104,8 +118,8 @@ def stack_options(H, hmax, bays, min_piece, mode, tol=10, keep=8):
     cands.update((a + b) / 2 for a in joints for b in joints if 0 < b - a <= 2 * tol)
     for n in (nmin, nmin + 1):
         cands.update(round(H * k / n) for k in range(1, n))
-    for k in range(1, nmin + 2):
-        cands.update((k * hmax, H - k * hmax))
+    for k in range(1, 2 * nmin + 2):
+        cands.update((k * hmax / 2, H - k * hmax / 2))
         for j in joints:
             cands.update((j + k * hmax, j - k * hmax))
     cands = sorted(c for c in cands if min_piece - EPS <= c <= H - min_piece + EPS)
@@ -119,7 +133,9 @@ def stack_options(H, hmax, bays, min_piece, mode, tol=10, keep=8):
         if H - pos <= hmax + EPS:
             heights = tuple(b - a for a, b in zip([0, *cuts], [*cuts, H]))
             off = sum(unsupported(c) for c in cuts)
-            key = tuple(sorted(round(h, 1) for h in heights))
+            key = tuple(round(h, 1) for h in heights)
+            if not ordered:
+                key = tuple(sorted(key))
             if key not in found or off < found[key].off_noggin:
                 found[key] = Stack(heights, off)
         if len(cuts) + 1 >= nmin + 1:  # allow at most one piece more than the minimum
@@ -151,6 +167,11 @@ class Solver:
         for w, pos in zip(walls, self.positions):
             if not w.studs or any(s <= 0 or s > self.L + EPS for s in w.studs):
                 raise ValueError(f"wall {w.name!r}: stud separations must be > 0 and <= {self.L:g}")
+            for corner in (w.start, w.end):
+                if corner not in CORNERS:
+                    raise ValueError(f"wall {w.name!r}: corner must be one of {', '.join(CORNERS)}, not {corner!r}")
+                if corner != "full" and settings.thickness <= 0:
+                    raise ValueError(f"wall {w.name!r}: set the sheet thickness to use {corner!r} corners")
             if not w.noggins:
                 w.noggins = [[] for _ in w.studs]
             if len(w.noggins) != len(w.studs) or not all(isinstance(n, list) for n in w.noggins):
@@ -173,6 +194,16 @@ class Solver:
     def hmax(self, width):
         return self.L if width <= self.S + EPS else self.S
 
+    def extent(self, wi, i, j):
+        """Sheeted x range of the column between studs i and j, allowing for corners."""
+        pos, wall, t = self.positions[wi], self.walls[wi], self.s.thickness
+        x0, x1 = pos[i], pos[j]
+        if i == 0:
+            x0 += CORNERS[wall.start] * t
+        if j == len(pos) - 1:
+            x1 -= CORNERS[wall.end] * t
+        return x0, x1
+
     def segments(self, wi, i, j):
         """Height ranges (from floor) to fill in the column between studs i and j."""
         key = (wi, i, j)
@@ -193,13 +224,15 @@ class Solver:
         return [[n - a for n in self.walls[wi].noggins[k]] for k in range(i, j)]
 
     def stacks(self, wi, i, j, seg):
-        hmax = self.hmax(self.positions[wi][j] - self.positions[wi][i])
+        x0, x1 = self.extent(wi, i, j)
+        hmax = self.hmax(x1 - x0)
         key = (wi, i, j, seg)
         if key not in self._stacks:
             a, b = seg
             bays = [[n for n in bay if 0 < n < b - a] for bay in self.bays(wi, i, j, a)]
+            stagger = self.s.stagger > 0
             opts = stack_options(b - a, hmax, bays, self.s.min_piece, self.s.noggin_joints,
-                                 self.s.noggin_tolerance)
+                                 self.s.noggin_tolerance, keep=40 if stagger else 8, ordered=stagger)
             if not opts:
                 raise ValueError(
                     f"wall {self.walls[wi].name!r}: no way to put every horizontal joint on a noggin "
@@ -218,7 +251,11 @@ class Solver:
         cols, i = [], 0
         while i < len(pos) - 1:
             stop = min([f for f in self.forced[wi] if f > i], default=len(pos) - 1)
-            cands = [j for j in range(i + 1, stop + 1) if pos[j] - pos[i] <= self.L + EPS]
+            cands = [j for j in range(i + 1, stop + 1)
+                     if self.extent(wi, i, j)[1] - self.extent(wi, i, j)[0] <= self.L + EPS]
+            if not cands:
+                raise ValueError(f"wall {self.walls[wi].name!r}: the bay starting at {pos[i]:g} is wider "
+                                 f"than a sheet once the corner is allowed for")
             if greedy:
                 j = cands[-1]
             else:
@@ -246,7 +283,7 @@ class Solver:
             pos = self.positions[wi]
             cols = []
             for ci, ((i, j), seg_opts) in enumerate(zip(part, opts)):
-                x0, x1 = pos[i], pos[j]
+                x0, x1 = self.extent(wi, i, j)
                 w = x1 - x0 - g * (i > 0) - g * (j < len(pos) - 1)
                 col = []
                 for seg, stack_opts, oi in zip(self.segments(wi, i, j), self.column_stacks(wi, i, j), seg_opts):
@@ -266,6 +303,17 @@ class Solver:
             walls.append(cols)
         return walls, off
 
+    def aligned(self, walls):
+        """Count joint pairs in neighbouring columns that are closer than the stagger distance."""
+        if self.s.stagger <= 0:
+            return 0
+        count = 0
+        for cols in walls:
+            joints = [[p.y1 for p in col if p.joint_support is not None] for col in cols]
+            for left, right in zip(joints, joints[1:]):
+                count += sum(abs(a - b) < self.s.stagger - EPS for a in left for b in right)
+        return count
+
     def evaluate(self, state):
         walls, off = self.build(state)
         pieces = [(p.label, p.w, p.h) for cols in walls for col in cols for p in col]
@@ -278,7 +326,7 @@ class Solver:
         n, offcut = self._packs[key]
         if self.s.noggin_joints == "ignore":
             off = 0
-        return (n, off, len(pieces), -offcut)
+        return (self.aligned(walls), n, off, len(pieces), -offcut)
 
     def solve(self, iterations=3000, progress=None):
         """Search for the best layout. `progress(done, total, best_sheets)` is called each iteration."""
@@ -287,7 +335,7 @@ class Solver:
         best, best_score = current, cur_score
         for it in range(iterations):
             if progress:
-                progress(it, iterations, best_score[0])
+                progress(it, iterations, best_score[1])
             cand = list(current)
             r = self.rng.random()
             if r < 0.1:
@@ -313,7 +361,7 @@ class Solver:
                 if score < best_score:
                     best, best_score = cand, score
         if progress:
-            progress(iterations, iterations, best_score[0])
+            progress(iterations, iterations, best_score[1])
         return self.result(best)
 
     def result(self, state):
@@ -324,4 +372,4 @@ class Solver:
         sheets = best_pack(pieces, self.L, self.S, self.s.kerf)
         area = sum(w * h for _, w, h in pieces)
         lower = math.ceil(area / (self.L * self.S) - EPS)
-        return Result(walls, sheets, lower, off)
+        return Result(walls, sheets, lower, off, self.aligned(walls))

@@ -1,0 +1,29 @@
+# All sizes in mm.
+height = 2400           # floor to ceiling
+bottom_gap = 2          # gap left at the floor
+top_gap = 0             # gap left at the ceiling
+sheet = [1200, 800]
+kerf = 3                # saw blade width (use 0 for score-and-snap)
+joint_gap = 3           # gap between neighbouring sheets at a joint
+min_piece = 100         # no piece narrower/shorter than this in height
+noggin_joints = "prefer"  # prefer | require | ignore horizontal joints on noggins
+noggins = [1200]        # noggin centre heights from floor, default for every wall
+
+# studs = distances between consecutive stud centres, from one wall end to the other.
+# Sheet edges can only land on these lines.
+[[walls]]
+name = "North"
+studs = [600, 600, 600, 600, 600, 600]
+
+[[walls]]
+name = "East"
+studs = [400, 400, 400, 400, 400, 450]
+
+[[walls]]
+name = "South"
+studs = [600, 600, 450, 600, 600, 750]
+noggins = [800, 1600]   # per-wall override
+
+[[walls]]
+name = "West"
+studs = [400, 400, 400, 400, 400, 450]

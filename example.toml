@@ -7,22 +7,26 @@ kerf = 3                # saw blade width (use 0 for score-and-snap)
 joint_gap = 3           # gap between neighbouring sheets at a joint
 min_piece = 100         # no piece narrower/shorter than this in height
 noggin_joints = "prefer"  # prefer | require | ignore horizontal joints on noggins
-noggins = [1200]        # noggin centre heights from floor, default for every wall
+noggin_tolerance = 10   # a joint within this of a noggin centre counts as on it
 
 # studs = distances between consecutive stud centres, from one wall end to the other.
 # Sheet edges can only land on these lines.
+# noggins = one list per stud bay (gap between neighbouring studs), giving the noggin
+# centre heights from the floor in that bay. Use [] for a bay without noggins.
 [[walls]]
 name = "North"
 studs = [600, 600, 600, 600, 600, 600]
+noggins = [[1200], [1150], [1200], [1150], [1200], [1150]]
 
 [[walls]]
 name = "East"
 studs = [400, 400, 400, 400, 400, 450]
+noggins = [[1200], [1150], [1200], [1150], [1200], [1150]]
 
 [[walls]]
 name = "South"
 studs = [600, 600, 450, 600, 600, 750]
-noggins = [800, 1600]   # per-wall override
+noggins = [[800, 1600], [790, 1610], [], [800, 1600], [790, 1610], [800, 1600]]
 # areas left unsheeted, e.g. a window; x edges must be on studs, y from floor
 stay_out = [
     { x = [1200, 1650], y = [900, 2100] },
@@ -31,3 +35,4 @@ stay_out = [
 [[walls]]
 name = "West"
 studs = [400, 400, 400, 400, 400, 450]
+noggins = [[1200], [1200], [1200], [1200], [1200], []]

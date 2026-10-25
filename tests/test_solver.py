@@ -17,8 +17,21 @@ def test_narrow_bays_share_sheets():
 
 
 def test_noggin_joint_preferred():
-    opts = stack_options(2398, 1200, [1198], 100, "prefer")
+    opts = stack_options(2398, 1200, [[1198]], 100, "prefer")
     assert opts[0].heights == (1198, 1200) and opts[0].off_noggin == 0
+
+
+def test_joint_between_staggered_noggins_catches_both():
+    opts = stack_options(2398, 1200, [[1190], [1206]], 100, "require", tol=10)
+    assert opts and opts[0].heights[0] == 1198
+
+
+def test_noggins_must_be_given_per_bay():
+    try:
+        Solver(Settings(), [Wall("a", [600, 600], noggins=[[1200]])])
+    except ValueError:
+        return
+    raise AssertionError("expected ValueError")
 
 
 def test_require_without_noggins_fails():

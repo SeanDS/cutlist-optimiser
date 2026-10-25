@@ -11,7 +11,10 @@ def load(path):
     with open(path, "rb") as f:
         data = tomllib.load(f)
     s = Settings()
-    for key in ("height", "bottom_gap", "top_gap", "kerf", "joint_gap", "min_piece", "noggin_joints"):
+    if "noggins" in data:
+        raise ValueError("noggins must be set per wall, as one list of heights per stud bay")
+    for key in ("height", "bottom_gap", "top_gap", "kerf", "joint_gap", "min_piece", "noggin_joints",
+                "noggin_tolerance"):
         if key in data:
             setattr(s, key, data[key])
     if "sheet" in data:
@@ -22,7 +25,7 @@ def load(path):
     for i, w in enumerate(data.get("walls", [])):
         stay_out = [(*a["x"], *a["y"]) for a in w.get("stay_out", [])]
         walls.append(Wall(w.get("name", f"Wall {i + 1}"), list(w["studs"]),
-                          list(w.get("noggins", data.get("noggins", []))), stay_out))
+                          list(w.get("noggins", [])), stay_out))
     if not walls:
         raise ValueError("no [[walls]] defined")
     return s, walls
@@ -52,14 +55,22 @@ def report(s, walls, res, out=sys.stdout):
             p(f"  x {f(c.x0):>6} - {f(c.x1):<6}")
             for pc in col:
                 joint = ""
-                if pc.joint_on_noggin is not None:
-                    joint = f"  joint at {f(pc.y1)}" + (" (on noggin)" if pc.joint_on_noggin else " (NO noggin)")
+                if pc.joint_support is not None:
+                    ok, bays = pc.joint_support
+                    if ok == bays:
+                        support = "on noggin"
+                    elif ok == 0:
+                        support = "NO noggin"
+                    else:
+                        support = f"on noggin in {ok} of {bays} bays"
+                    joint = f"  joint at {f(pc.y1)} ({support})"
                 p(f"    {pc.label:<6} y {f(pc.y0):>6} - {f(pc.y1):<6}  cut {f(pc.w)} x {f(pc.h)}{joint}")
     p()
     status = "optimal" if len(res.sheets) == res.lower_bound else f"area lower bound {res.lower_bound}"
     p(f"CUT LIST: {len(res.sheets)} sheets ({status})")
     if res.off_noggin and s.noggin_joints != "ignore":
-        p(f"  note: {res.off_noggin} horizontal joint(s) not on a noggin - add blocking there")
+        p(f"  note: {res.off_noggin} place(s) where a horizontal joint crosses a bay with no noggin "
+          f"- add blocking there")
     for i, sh in enumerate(res.sheets, 1):
         p(f"\nSheet {i}:  (x along the {f(sh.width)} edge, y along the {f(sh.height)} edge)")
         for pl in sorted(sh.placements, key=lambda q: (q.y, q.x)):
@@ -90,10 +101,7 @@ def svg(s, walls, res, path, scale=0.1, sheet_scale=0.25, per_row=3):
         top = y + s.height * scale
         length = wall.positions[-1] * scale
         rect(10, y, length, s.height * scale, 'fill="#eee" stroke="#999"')
-        for x in wall.positions:
-            line(10 + x * scale, y, 10 + x * scale, top, 'stroke="#c96" stroke-width="2"')
-        for n in wall.noggins:
-            line(10, top - n * scale, 10 + length, top - n * scale, 'stroke="#c96" stroke-dasharray="4"')
+        # framing drawn over the pieces so it shows through
         for col in cols:
             for pc in col:
                 px, py = 10 + pc.x0 * scale, top - pc.y1 * scale
@@ -101,6 +109,12 @@ def svg(s, walls, res, path, scale=0.1, sheet_scale=0.25, per_row=3):
                      'fill="#9bd" fill-opacity="0.6" stroke="#000"')
                 if (pc.y1 - pc.y0) * scale >= 16:
                     text(px + 4, py + 14, pc.label)
+        for x in wall.positions:
+            line(10 + x * scale, y, 10 + x * scale, top, 'stroke="#a0522d" stroke-width="1.5" stroke-opacity="0.7"')
+        for x0, x1, bay in zip(wall.positions, wall.positions[1:], wall.noggins):
+            for n in bay:
+                line(10 + x0 * scale, top - n * scale, 10 + x1 * scale, top - n * scale,
+                     'stroke="#a0522d" stroke-width="3"')
         for x0, x1, y0, y1 in wall.stay_out:
             y1 = min(y1, s.height)
             sx, sy, sw, sh = 10 + x0 * scale, top - y1 * scale, (x1 - x0) * scale, (y1 - y0) * scale

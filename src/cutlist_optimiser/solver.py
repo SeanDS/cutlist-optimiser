@@ -7,7 +7,9 @@ Model:
     the column's width.  Stay-out areas (windows, doors, ...) have their sides on
     studs, which always carry a joint; columns under one are filled separately
     below and above it.  Horizontal joints may fall anywhere, but joints on a
-    noggin are preferred (or required, depending on settings).
+    noggin are preferred (or required, depending on settings).  Noggins are
+    given per stud bay; a joint across a column spanning several bays is
+    checked bay by bay.
   * All pieces are then packed onto sheets; offcuts are reused.
 """
 
@@ -28,13 +30,14 @@ class Settings:
     joint_gap: float = 3
     min_piece: float = 100
     noggin_joints: str = "prefer"  # prefer | require | ignore
+    noggin_tolerance: float = 10  # max distance of a joint from a noggin centre to count as on it
 
 
 @dataclass
 class Wall:
     name: str
     studs: list  # separations between consecutive studs (centre to centre), wall end to wall end
-    noggins: list = field(default_factory=list)  # noggin centre heights from floor
+    noggins: list = field(default_factory=list)  # per stud bay: list of noggin centre heights from floor
     stay_out: list = field(default_factory=list)  # (x0, x1, y0, y1) areas left unsheeted
 
     @property
@@ -48,7 +51,7 @@ class Wall:
 @dataclass(frozen=True)
 class Stack:
     heights: tuple  # nominal piece heights, bottom to top
-    off_noggin: int  # horizontal joints not backed by a noggin
+    off_noggin: int  # bays crossed by a horizontal joint with no noggin there
 
 
 @dataclass
@@ -60,7 +63,7 @@ class Piece:
     y1: float
     w: float  # actual cut size (joint gap removed)
     h: float
-    joint_on_noggin: bool | None  # for the joint at the top of this piece; None = no joint
+    joint_support: tuple | None  # joint at the top of this piece: (bays with noggin, bays); None = no joint
 
 
 @dataclass
@@ -71,10 +74,21 @@ class Result:
     off_noggin: int
 
 
-def stack_options(H, hmax, joints, min_piece, mode, keep=8):
-    """Ways to fill height H with pieces <= hmax. `joints` are noggin heights relative to the panel bottom."""
+def joint_support(y, bays, tol):
+    """Number of bays (each a list of noggin heights) with a noggin within tol of height y."""
+    return sum(any(abs(y - n) <= tol + EPS for n in bay) for bay in bays)
+
+
+def stack_options(H, hmax, bays, min_piece, mode, tol=10, keep=8):
+    """Ways to fill height H with pieces <= hmax.
+
+    `bays` holds the noggin heights (relative to the panel bottom) of each stud bay the column spans.
+    """
+    joints = sorted({n for bay in bays for n in bay})
     nmin = math.ceil(H / hmax - EPS)
     cands = set(joints)
+    # a joint between two nearby noggins in different bays can catch both
+    cands.update((a + b) / 2 for a in joints for b in joints if 0 < b - a <= 2 * tol)
     for n in (nmin, nmin + 1):
         cands.update(round(H * k / n) for k in range(1, n))
     for k in range(1, nmin + 2):
@@ -83,15 +97,15 @@ def stack_options(H, hmax, joints, min_piece, mode, keep=8):
             cands.update((j + k * hmax, j - k * hmax))
     cands = sorted(c for c in cands if min_piece - EPS <= c <= H - min_piece + EPS)
 
-    def on_noggin(c):
-        return any(abs(c - j) < 0.5 for j in joints)
+    def unsupported(c):
+        return len(bays) - joint_support(c, bays, tol)
 
     found = {}
 
     def dfs(pos, cuts):
         if H - pos <= hmax + EPS:
             heights = tuple(b - a for a, b in zip([0, *cuts], [*cuts, H]))
-            off = sum(not on_noggin(c) for c in cuts)
+            off = sum(unsupported(c) for c in cuts)
             key = tuple(sorted(round(h, 1) for h in heights))
             if key not in found or off < found[key].off_noggin:
                 found[key] = Stack(heights, off)
@@ -124,6 +138,11 @@ class Solver:
         for w, pos in zip(walls, self.positions):
             if not w.studs or any(s <= 0 or s > self.L + EPS for s in w.studs):
                 raise ValueError(f"wall {w.name!r}: stud separations must be > 0 and <= {self.L:g}")
+            if not w.noggins:
+                w.noggins = [[] for _ in w.studs]
+            if len(w.noggins) != len(w.studs) or not all(isinstance(n, list) for n in w.noggins):
+                raise ValueError(f"wall {w.name!r}: noggins must be a list of {len(w.studs)} lists, "
+                                 f"one per stud bay (use [] for a bay without noggins)")
             forced = set()
             for x0, x1, y0, y1 in w.stay_out:
                 if not (x0 < x1 and y0 < y1):
@@ -154,14 +173,20 @@ class Solver:
             self._segments[key] = segs
         return self._segments[key]
 
-    def stacks(self, wi, width, seg):
-        hmax = self.hmax(width)
-        key = (wi, hmax, seg)
+    def bays(self, wi, i, j, a=0.0):
+        """Noggin heights (relative to a) for each stud bay between studs i and j."""
+        if self.s.noggin_joints == "ignore":
+            return [[] for _ in range(i, j)]
+        return [[n - a for n in self.walls[wi].noggins[k]] for k in range(i, j)]
+
+    def stacks(self, wi, i, j, seg):
+        hmax = self.hmax(self.positions[wi][j] - self.positions[wi][i])
+        key = (wi, i, j, seg)
         if key not in self._stacks:
             a, b = seg
-            joints = [] if self.s.noggin_joints == "ignore" else [
-                n - a for n in self.walls[wi].noggins if a < n < b]
-            opts = stack_options(b - a, hmax, joints, self.s.min_piece, self.s.noggin_joints)
+            bays = [[n for n in bay if 0 < n < b - a] for bay in self.bays(wi, i, j, a)]
+            opts = stack_options(b - a, hmax, bays, self.s.min_piece, self.s.noggin_joints,
+                                 self.s.noggin_tolerance)
             if not opts:
                 raise ValueError(
                     f"wall {self.walls[wi].name!r}: no way to put every horizontal joint on a noggin "
@@ -172,8 +197,7 @@ class Solver:
 
     def column_stacks(self, wi, i, j):
         """Stack options for each segment of a column."""
-        width = self.positions[wi][j] - self.positions[wi][i]
-        return [self.stacks(wi, width, seg) for seg in self.segments(wi, i, j)]
+        return [self.stacks(wi, i, j, seg) for seg in self.segments(wi, i, j)]
 
     def partition(self, wi, greedy=False):
         """Choose which studs carry vertical joints: list of (i, j) position indices."""
@@ -220,7 +244,8 @@ class Solver:
                         top = k < n - 1
                         on = None
                         if top:
-                            on = any(abs(y + h - nog) < 0.5 for nog in self.walls[wi].noggins)
+                            on = (joint_support(y + h, self.walls[wi].noggins[i:j], self.s.noggin_tolerance),
+                                  j - i)
                         label = f"{wi + 1}.{ci + 1}{chr(ord('a') + len(col))}"
                         col.append(Piece(label, x0, x1, y, y + h, w, h - g * (k > 0) - g * top, on))
                         y += h

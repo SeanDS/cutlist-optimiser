@@ -27,3 +27,28 @@ def test_require_without_noggins_fails():
     except ValueError:
         return
     raise AssertionError("expected ValueError")
+
+
+def test_stay_out_area_is_not_sheeted():
+    # 1200 wall, window over the right 600 mm bay from 900 to 2100 mm
+    wall = Wall("a", [600, 600], stay_out=[(600, 1200, 900, 2100)])
+    res = solve([wall], kerf=0, joint_gap=0, bottom_gap=0)
+    pieces = [p for col in res.walls[0] for p in col]
+    area = sum((p.x1 - p.x0) * (p.y1 - p.y0) for p in pieces)
+    assert area == 1200 * 2400 - 600 * 1200
+    for p in pieces:
+        assert p.x1 <= 600 or p.y1 <= 900 or p.y0 >= 2100
+
+
+def test_stay_out_edge_must_be_on_stud():
+    try:
+        Solver(Settings(), [Wall("a", [600, 600], stay_out=[(500, 1200, 900, 2100)])])
+    except ValueError:
+        return
+    raise AssertionError("expected ValueError")
+
+
+def test_door_to_ceiling_leaves_empty_column():
+    wall = Wall("a", [600, 600], stay_out=[(600, 1200, 0, 2400)])
+    res = solve([wall])
+    assert all(p.x1 <= 600 for col in res.walls[0] for p in col)

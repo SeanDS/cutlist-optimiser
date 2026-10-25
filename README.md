@@ -15,7 +15,7 @@ or from a local clone:
 ## Use
 
     cutlist-optimiser example.toml                 # print the wall layout and cut list
-    cutlist-optimiser example.toml --svg plan.svg  # also draw it
+    cutlist-optimiser example.toml --svg plan.svg  # also draw walls and cutting diagrams
     cutlist-optimiser example.toml -n 20000        # search longer (default 3000 iterations)
 
 While it searches, a progress bar showing the current best sheet count is printed to stderr (only in a terminal).
@@ -28,6 +28,7 @@ Copy `example.toml` and edit it. All sizes are in mm.
   * `prefer` (the default) puts horizontal joints on noggins when doing so costs no extra sheets.
   * `require` only allows horizontal joints on noggins.
   * `ignore` doesn't consider noggins at all.
+* `stay_out` lists areas on a wall that get no sheets, such as windows or doors. Each one is written as `{ x = [from, to], y = [from, to] }`, with `x` measured from the wall start and `y` from the floor. Both `x` edges must be on studs, which is where the framing around an opening sits. Those studs always carry a vertical joint, and the columns under an opening are filled separately below and above it. An opening that reaches the floor or ceiling is fine.
 * `bottom_gap` and `top_gap` are the gaps left at the floor and ceiling.
 * `joint_gap` is the gap between neighbouring sheets. Half of it comes off each edge that meets another sheet.
 * `kerf` is the blade width allowed between pieces cut from the same sheet. Set it to 0 if you score and snap.
@@ -42,6 +43,8 @@ Copy `example.toml` and edit it. All sizes are in mm.
 
 The output compares the sheet count with the area lower bound. If they match, the result is optimal. The search is a heuristic, so a higher `-n` or another `--seed` can sometimes save a sheet.
 
+The SVG shows every wall with its studs, noggins (dashed), stay-out areas (crossed out) and pieces. Below that, each sheet is drawn whole with its pieces marked on it. Red dashed lines are the guillotine cuts, numbered in the order to make them, and hatched areas are offcuts.
+
 Piece labels look like `2.3b`: wall 2, column 3, piece b (a is the bottom). Write them on the pieces as you cut.
 
-Not handled: openings (doors, windows), staggering horizontal joints between neighbouring columns, and corner overlaps.
+Not handled: staggering horizontal joints between neighbouring columns, and corner overlaps.

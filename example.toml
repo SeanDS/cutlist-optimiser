@@ -23,6 +23,10 @@ studs = [400, 400, 400, 400, 400, 450]
 name = "South"
 studs = [600, 600, 450, 600, 600, 750]
 noggins = [800, 1600]   # per-wall override
+# areas left unsheeted, e.g. a window; x edges must be on studs, y from floor
+stay_out = [
+    { x = [1200, 1650], y = [900, 2100] },
+]
 
 [[walls]]
 name = "West"

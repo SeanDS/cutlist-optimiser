@@ -21,6 +21,7 @@ class Sheet:
     height: float
     placements: list = field(default_factory=list)
     free: list = field(default_factory=list)  # (x, y, w, h) offcut rectangles
+    cuts: list = field(default_factory=list)  # (x0, y0, x1, y1) guillotine cut lines, in cutting order
 
     def __post_init__(self):
         if not self.free:
@@ -31,9 +32,10 @@ class Sheet:
 
 
 def _split(free, w, h, kerf):
-    """Split a free rectangle after placing w x h in its bottom-left corner.
+    """Split a free rectangle after placing w x h in its corner.
 
     Picks the guillotine direction that leaves the biggest single offcut.
+    Returns the new free rectangles and the cuts (along the kerf centre) needed.
     """
     fx, fy, fw, fh = free
     rw, th = fw - w - kerf, fh - h - kerf
@@ -46,7 +48,13 @@ def _split(free, w, h, kerf):
     def biggest(rects):
         return max((r[2] * r[3] for r in valid(rects)), default=0.0)
 
-    return valid(along if biggest(along) >= biggest(across) else across)
+    cx, cy = fx + w + kerf / 2, fy + h + kerf / 2
+    if biggest(along) >= biggest(across):
+        rects, cuts = along, [(fx, cy, fx + fw, cy, fh - h), (cx, fy, cx, fy + h, fw - w)]
+    else:
+        rects, cuts = across, [(cx, fy, cx, fy + fh, fw - w), (fx, cy, fx + w, cy, fh - h)]
+    # a cut is only needed if there is material beyond the piece on that side
+    return valid(rects), [c[:4] for c in cuts if c[4] > EPS]
 
 
 def _place(sheets, label, w, h, kerf):
@@ -63,7 +71,9 @@ def _place(sheets, label, w, h, kerf):
     _, s, i, pw, ph, rot = best
     free = s.free.pop(i)
     s.placements.append(Placement(label, free[0], free[1], pw, ph, rot))
-    s.free.extend(_split(free, pw, ph, kerf))
+    rects, cuts = _split(free, pw, ph, kerf)
+    s.free.extend(rects)
+    s.cuts.extend(cuts)
     return True
 
 

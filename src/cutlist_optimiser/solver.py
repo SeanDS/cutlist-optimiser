@@ -4,7 +4,9 @@ Model:
   * Vertical joints may only fall on studs (or the wall ends).  A wall is split
     into "columns" spanning one or more stud bays, each no wider than a sheet.
   * Each column is filled from bottom gap to ceiling with a stack of pieces of
-    the column's width.  Horizontal joints may fall anywhere, but joints on a
+    the column's width.  Stay-out areas (windows, doors, ...) have their sides on
+    studs, which always carry a joint; columns under one are filled separately
+    below and above it.  Horizontal joints may fall anywhere, but joints on a
     noggin are preferred (or required, depending on settings).
   * All pieces are then packed onto sheets; offcuts are reused.
 """
@@ -33,6 +35,7 @@ class Wall:
     name: str
     studs: list  # separations between consecutive studs (centre to centre), wall end to wall end
     noggins: list = field(default_factory=list)  # noggin centre heights from floor
+    stay_out: list = field(default_factory=list)  # (x0, x1, y0, y1) areas left unsheeted
 
     @property
     def positions(self):
@@ -62,7 +65,7 @@ class Piece:
 
 @dataclass
 class Result:
-    walls: list  # per wall: list of columns, each a list of Pieces bottom to top
+    walls: list  # per wall: list of columns, each a list of Pieces bottom to top (may be empty)
     sheets: list
     lower_bound: int
     off_noggin: int
@@ -112,39 +115,73 @@ class Solver:
         self.walls = walls
         self.rng = random.Random(seed)
         self.L, self.S = max(settings.sheet), min(settings.sheet)
-        self.H = settings.height - settings.bottom_gap - settings.top_gap
+        self.bottom, self.top = settings.bottom_gap, settings.height - settings.top_gap
         self.positions = [w.positions for w in walls]
+        self.forced = []  # per wall: stud indices that must carry a vertical joint
+        self._segments = {}
         self._stacks = {}
         self._packs = {}
-        for w in walls:
+        for w, pos in zip(walls, self.positions):
             if not w.studs or any(s <= 0 or s > self.L + EPS for s in w.studs):
                 raise ValueError(f"wall {w.name!r}: stud separations must be > 0 and <= {self.L:g}")
+            forced = set()
+            for x0, x1, y0, y1 in w.stay_out:
+                if not (x0 < x1 and y0 < y1):
+                    raise ValueError(f"wall {w.name!r}: stay-out area {x0:g}-{x1:g} x {y0:g}-{y1:g} is empty")
+                for x in (x0, x1):
+                    idx = [i for i, p in enumerate(pos) if abs(p - x) < 0.5]
+                    if not idx:
+                        raise ValueError(f"wall {w.name!r}: stay-out area edge x={x:g} is not on a stud "
+                                         f"(studs at {', '.join(f'{p:g}' for p in pos)})")
+                    forced.add(idx[0])
+            self.forced.append(forced - {0, len(pos) - 1})
 
     # --- layout generation -------------------------------------------------
 
     def hmax(self, width):
         return self.L if width <= self.S + EPS else self.S
 
-    def stacks(self, wi, width):
+    def segments(self, wi, i, j):
+        """Height ranges (from floor) to fill in the column between studs i and j."""
+        key = (wi, i, j)
+        if key not in self._segments:
+            x0, x1 = self.positions[wi][i], self.positions[wi][j]
+            segs = [(self.bottom, self.top)]
+            for sx0, sx1, sy0, sy1 in self.walls[wi].stay_out:
+                if sx0 - 0.5 <= x0 and x1 <= sx1 + 0.5:
+                    segs = [part for a, b in segs
+                            for part in ((a, min(b, sy0)), (max(a, sy1), b)) if part[1] - part[0] > EPS]
+            self._segments[key] = segs
+        return self._segments[key]
+
+    def stacks(self, wi, width, seg):
         hmax = self.hmax(width)
-        key = (wi, hmax)
+        key = (wi, hmax, seg)
         if key not in self._stacks:
+            a, b = seg
             joints = [] if self.s.noggin_joints == "ignore" else [
-                n - self.s.bottom_gap for n in self.walls[wi].noggins]
-            opts = stack_options(self.H, hmax, joints, self.s.min_piece, self.s.noggin_joints)
+                n - a for n in self.walls[wi].noggins if a < n < b]
+            opts = stack_options(b - a, hmax, joints, self.s.min_piece, self.s.noggin_joints)
             if not opts:
                 raise ValueError(
-                    f"wall {self.walls[wi].name!r}: no way to put every horizontal joint on a "
-                    f"noggin for {hmax:g} mm tall pieces; add noggins or use noggin_joints = 'prefer'")
+                    f"wall {self.walls[wi].name!r}: no way to put every horizontal joint on a noggin "
+                    f"between {a:g} and {b:g} mm for {hmax:g} mm tall pieces; add noggins or use "
+                    f"noggin_joints = 'prefer'")
             self._stacks[key] = opts
         return self._stacks[key]
+
+    def column_stacks(self, wi, i, j):
+        """Stack options for each segment of a column."""
+        width = self.positions[wi][j] - self.positions[wi][i]
+        return [self.stacks(wi, width, seg) for seg in self.segments(wi, i, j)]
 
     def partition(self, wi, greedy=False):
         """Choose which studs carry vertical joints: list of (i, j) position indices."""
         pos = self.positions[wi]
         cols, i = [], 0
         while i < len(pos) - 1:
-            cands = [j for j in range(i + 1, len(pos)) if pos[j] - pos[i] <= self.L + EPS]
+            stop = min([f for f in self.forced[wi] if f > i], default=len(pos) - 1)
+            cands = [j for j in range(i + 1, stop + 1) if pos[j] - pos[i] <= self.L + EPS]
             if greedy:
                 j = cands[-1]
             else:
@@ -159,8 +196,7 @@ class Solver:
 
     def random_wall(self, wi, greedy=False):
         part = self.partition(wi, greedy)
-        pos = self.positions[wi]
-        opts = [0 if greedy else self.rng.randrange(len(self.stacks(wi, pos[j] - pos[i])))
+        opts = [tuple(0 if greedy else self.rng.randrange(len(o)) for o in self.column_stacks(wi, i, j))
                 for i, j in part]
         return (tuple(part), tuple(opts))
 
@@ -172,20 +208,22 @@ class Solver:
         for wi, (part, opts) in enumerate(state):
             pos = self.positions[wi]
             cols = []
-            for ci, ((i, j), oi) in enumerate(zip(part, opts)):
+            for ci, ((i, j), seg_opts) in enumerate(zip(part, opts)):
                 x0, x1 = pos[i], pos[j]
-                st = self.stacks(wi, x1 - x0)[oi]
-                off += st.off_noggin
                 w = x1 - x0 - g * (i > 0) - g * (j < len(pos) - 1)
-                y, col, n = self.s.bottom_gap, [], len(st.heights)
-                for k, h in enumerate(st.heights):
-                    top = k < n - 1
-                    on = None
-                    if top:
-                        on = any(abs(y + h - nog) < 0.5 for nog in self.walls[wi].noggins)
-                    label = f"{wi + 1}.{ci + 1}{chr(ord('a') + k)}"
-                    col.append(Piece(label, x0, x1, y, y + h, w, h - g * (k > 0) - g * top, on))
-                    y += h
+                col = []
+                for seg, stack_opts, oi in zip(self.segments(wi, i, j), self.column_stacks(wi, i, j), seg_opts):
+                    st = stack_opts[oi]
+                    off += st.off_noggin
+                    y, n = seg[0], len(st.heights)
+                    for k, h in enumerate(st.heights):
+                        top = k < n - 1
+                        on = None
+                        if top:
+                            on = any(abs(y + h - nog) < 0.5 for nog in self.walls[wi].noggins)
+                        label = f"{wi + 1}.{ci + 1}{chr(ord('a') + len(col))}"
+                        col.append(Piece(label, x0, x1, y, y + h, w, h - g * (k > 0) - g * top, on))
+                        y += h
                 cols.append(col)
             walls.append(cols)
         return walls, off
@@ -198,7 +236,7 @@ class Solver:
             # pack anonymised pieces so the result can be cached by size alone
             sheets = best_pack([(str(i), w, h) for i, (w, h) in enumerate(key)],
                                self.L, self.S, self.s.kerf)
-            self._packs[key] = (len(sheets), max(s.largest_offcut() for s in sheets))
+            self._packs[key] = (len(sheets), max((s.largest_offcut() for s in sheets), default=0))
         n, offcut = self._packs[key]
         if self.s.noggin_joints == "ignore":
             off = 0
@@ -219,15 +257,16 @@ class Solver:
             else:
                 wi = self.rng.randrange(len(self.walls))
                 part, opts = cand[wi]
-                if r < 0.55:
+                ci = self.rng.randrange(len(part))
+                choices = self.column_stacks(wi, *part[ci])
+                if r < 0.55 or not choices:
                     cand[wi] = self.random_wall(wi)
                 else:
-                    ci = self.rng.randrange(len(part))
-                    i, j = part[ci]
-                    pos = self.positions[wi]
-                    n = len(self.stacks(wi, pos[j] - pos[i]))
+                    si = self.rng.randrange(len(choices))
+                    seg_opts = list(opts[ci])
+                    seg_opts[si] = self.rng.randrange(len(choices[si]))
                     opts = list(opts)
-                    opts[ci] = self.rng.randrange(n)
+                    opts[ci] = tuple(seg_opts)
                     cand[wi] = (part, tuple(opts))
             cand = tuple(cand)
             score = self.evaluate(cand)

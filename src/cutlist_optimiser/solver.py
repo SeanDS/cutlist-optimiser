@@ -95,6 +95,10 @@ class Result:
         return sum(s.used_area for s in self.sheets)
 
     @property
+    def cuts(self):
+        return sum(len(s.cuts) for s in self.sheets)
+
+    @property
     def utilisation(self):
         return self.used_area / self.sheet_area if self.sheets else 0.0
 

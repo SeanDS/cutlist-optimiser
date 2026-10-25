@@ -51,7 +51,7 @@ Copy `example.toml` and edit it. All sizes are in mm.
 3. All the pieces are packed onto sheets with a guillotine packer. Offcuts are reused and pieces may be rotated.
 4. A local search tries different column splits and stack heights. It ranks layouts by sheets first, then the number of bays where a joint has no noggin, then number of pieces.
 
-The cut list starts with the sheet utilisation: how much of the bought sheet area ends up in pieces, and how much is wasted as offcuts and saw kerf. Each sheet also shows how much of it is used.
+The cut list starts with the sheet utilisation: how much of the bought sheet area ends up in pieces, and how much is wasted as offcuts and saw kerf. Each sheet also shows how much of it is used and how many cuts it needs, and the total number of cuts is given. Every straight cut is counted, including thin trims to size.
 
 The output compares the sheet count with the area lower bound. If they match, the result is optimal. The search is a heuristic, so a higher `-n` or another `--seed` can sometimes save a sheet. The seed used is printed at the top of the output. The same file, `-n` and seed always give the same result.
 

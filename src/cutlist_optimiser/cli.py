@@ -82,6 +82,7 @@ def report(s, walls, res, seed, out=sys.stdout):
     waste = res.sheet_area - res.used_area
     p(f"  utilisation: {m2(res.used_area)} of {m2(res.sheet_area)} used in pieces ({res.utilisation:.1%}), "
       f"{m2(waste)} wasted as offcuts and kerf ({1 - res.utilisation:.1%})")
+    p(f"  cuts: {res.cuts} in total")
     if res.off_noggin and s.noggin_joints != "ignore":
         p(f"  note: {res.off_noggin} place(s) where a horizontal joint crosses a bay with no noggin "
           f"- add blocking there")
@@ -89,7 +90,7 @@ def report(s, walls, res, seed, out=sys.stdout):
         p(f"  note: {res.aligned} pair(s) of joints in neighbouring columns are less than "
           f"{f(s.stagger)} mm apart")
     for i, sh in enumerate(res.sheets, 1):
-        p(f"\nSheet {i}:  {sh.used_area / sh.area:.1%} used  "
+        p(f"\nSheet {i}:  {sh.used_area / sh.area:.1%} used, {len(sh.cuts)} cut{'' if len(sh.cuts) == 1 else 's'}  "
           f"(x along the {f(sh.width)} edge, y along the {f(sh.height)} edge)")
         for pl in sorted(sh.placements, key=lambda q: (q.y, q.x)):
             p(f"  {pl.label:<6} {f(pl.w):>6} x {f(pl.h):<6} at x={f(pl.x)}, y={f(pl.y)}")
@@ -149,7 +150,7 @@ def svg(s, walls, res, path, scale=0.1, sheet_scale=0.25, per_row=3):
     cell_w, cell_h = L * sheet_scale + 30, S * sheet_scale + 40
     for i, sh in enumerate(res.sheets):
         bx, by = 10 + (i % per_row) * cell_w, y + (i // per_row) * cell_h
-        text(bx, by + 12, f"Sheet {i + 1}  ({sh.used_area / sh.area:.1%} used)", 14, bold=True)
+        text(bx, by + 12, f"Sheet {i + 1}  ({sh.used_area / sh.area:.1%} used, {len(sh.cuts)} cuts)", 14, bold=True)
         by += 20
         rect(bx, by, sh.width * sheet_scale, sh.height * sheet_scale, 'fill="#f4ead2"')
         for fx, fy, fw, fh in sh.free:

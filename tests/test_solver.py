@@ -9,6 +9,7 @@ def test_full_sheets_600_centres():
     res = solve([Wall("a", [600] * 6)], kerf=0, joint_gap=0)
     assert len(res.sheets) == res.lower_bound == 9
     assert abs(res.used_area - 3600 * 2398) < 1e-6
+    assert res.cuts == 3  # only the three 798 mm pieces need a cut; the rest are whole sheets
     assert abs(res.utilisation - 3600 * 2398 / (9 * 1200 * 800)) < 1e-9
 
 

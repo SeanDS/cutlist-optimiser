@@ -68,11 +68,16 @@ def report(s, walls, res, out=sys.stdout):
     p()
     status = "optimal" if len(res.sheets) == res.lower_bound else f"area lower bound {res.lower_bound}"
     p(f"CUT LIST: {len(res.sheets)} sheets ({status})")
+    m2 = lambda a: f"{a / 1e6:.2f} m²"
+    waste = res.sheet_area - res.used_area
+    p(f"  utilisation: {m2(res.used_area)} of {m2(res.sheet_area)} used in pieces ({res.utilisation:.1%}), "
+      f"{m2(waste)} wasted as offcuts and kerf ({1 - res.utilisation:.1%})")
     if res.off_noggin and s.noggin_joints != "ignore":
         p(f"  note: {res.off_noggin} place(s) where a horizontal joint crosses a bay with no noggin "
           f"- add blocking there")
     for i, sh in enumerate(res.sheets, 1):
-        p(f"\nSheet {i}:  (x along the {f(sh.width)} edge, y along the {f(sh.height)} edge)")
+        p(f"\nSheet {i}:  {sh.used_area / sh.area:.1%} used  "
+          f"(x along the {f(sh.width)} edge, y along the {f(sh.height)} edge)")
         for pl in sorted(sh.placements, key=lambda q: (q.y, q.x)):
             p(f"  {pl.label:<6} {f(pl.w):>6} x {f(pl.h):<6} at x={f(pl.x)}, y={f(pl.y)}")
         offcuts = [r for r in sh.free if min(r[2], r[3]) >= 50]
@@ -131,7 +136,7 @@ def svg(s, walls, res, path, scale=0.1, sheet_scale=0.25, per_row=3):
     cell_w, cell_h = L * sheet_scale + 30, S * sheet_scale + 40
     for i, sh in enumerate(res.sheets):
         bx, by = 10 + (i % per_row) * cell_w, y + (i // per_row) * cell_h
-        text(bx, by + 12, f"Sheet {i + 1}", 14, bold=True)
+        text(bx, by + 12, f"Sheet {i + 1}  ({sh.used_area / sh.area:.1%} used)", 14, bold=True)
         by += 20
         rect(bx, by, sh.width * sheet_scale, sh.height * sheet_scale, 'fill="#f4ead2"')
         for fx, fy, fw, fh in sh.free:

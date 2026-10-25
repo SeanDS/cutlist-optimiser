@@ -8,6 +8,8 @@ def solve(walls, **kw):
 def test_full_sheets_600_centres():
     res = solve([Wall("a", [600] * 6)], kerf=0, joint_gap=0)
     assert len(res.sheets) == res.lower_bound == 9
+    assert abs(res.used_area - 3600 * 2398) < 1e-6
+    assert abs(res.utilisation - 3600 * 2398 / (9 * 1200 * 800)) < 1e-9
 
 
 def test_narrow_bays_share_sheets():

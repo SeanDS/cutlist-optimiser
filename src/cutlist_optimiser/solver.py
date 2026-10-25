@@ -73,6 +73,19 @@ class Result:
     lower_bound: int
     off_noggin: int
 
+    @property
+    def sheet_area(self):
+        return sum(s.area for s in self.sheets)
+
+    @property
+    def used_area(self):
+        """Area of all sheets that ends up in pieces; the rest is offcuts and saw kerf."""
+        return sum(s.used_area for s in self.sheets)
+
+    @property
+    def utilisation(self):
+        return self.used_area / self.sheet_area if self.sheets else 0.0
+
 
 def joint_support(y, bays, tol):
     """Number of bays (each a list of noggin heights) with a noggin within tol of height y."""

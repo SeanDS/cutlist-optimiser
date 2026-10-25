@@ -27,6 +27,14 @@ class Sheet:
         if not self.free:
             self.free = [(0.0, 0.0, self.width, self.height)]
 
+    @property
+    def area(self):
+        return self.width * self.height
+
+    @property
+    def used_area(self):
+        return sum(p.w * p.h for p in self.placements)
+
     def largest_offcut(self):
         return max((w * h for _, _, w, h in self.free), default=0.0)
 

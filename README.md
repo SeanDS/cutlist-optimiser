@@ -41,6 +41,8 @@ Copy `example.toml` and edit it. All sizes are in mm.
 3. All the pieces are packed onto sheets with a guillotine packer. Offcuts are reused and pieces may be rotated.
 4. A local search tries different column splits and stack heights. It ranks layouts by sheets first, then the number of bays where a joint has no noggin, then number of pieces.
 
+The cut list starts with the sheet utilisation: how much of the bought sheet area ends up in pieces, and how much is wasted as offcuts and saw kerf. Each sheet also shows how much of it is used.
+
 The output compares the sheet count with the area lower bound. If they match, the result is optimal. The search is a heuristic, so a higher `-n` or another `--seed` can sometimes save a sheet.
 
 The SVG shows every wall with its studs, noggins (thick lines), stay-out areas (crossed out) and pieces. Below that, each sheet is drawn whole with its pieces marked on it. Red dashed lines are the guillotine cuts, numbered in the order to make them, and hatched areas are offcuts.

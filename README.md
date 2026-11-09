@@ -133,4 +133,4 @@ The output covers:
 * **Tiles:** tiles needed and to order, efficiency (tile area on the walls ÷ area of tiles used), and cuts (straight cuts, notches at 2 cuts each, and mitred edges). It also lists any pieces below the minimum size.
 * **Cut list:** grouped by how each tile is cut.
 
-The SVG draws each wall's tiled face with whole tiles, cut pieces and their sizes. Pieces below the minimum are red, mitred edges are red lines, and the centre line is dashed blue.
+The SVG draws each wall's tiled face with whole tiles, cut pieces and their sizes. Pieces below the minimum are red, mitred edges are red lines, and the centre line is dashed blue. Below that, all the walls are drawn unwrapped: laid flat in order round the room and joined at their corners, so you can check how the pattern carries on round each corner. Corner lines are dashed green where the pattern continues, orange where it restarts, and red at the seam.

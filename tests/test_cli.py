@@ -62,7 +62,8 @@ def test_tiles_runs(tmp_path):
     assert res.exit_code == 0, res.output
     for section in ("PRIORITIES", "FINISHED SIZES", "SETTING OUT", "TILES", "CUT LIST", "efficiency", "cuts:"):
         assert section in res.output
-    assert (tmp_path / "t.svg").read_text().startswith("<svg")
+    drawing = (tmp_path / "t.svg").read_text()
+    assert drawing.startswith("<svg") and "Unwrapped walls" in drawing
 
 
 def test_tiles_without_section_explains(tmp_path):

@@ -112,46 +112,94 @@ def sheets_svg(solver, res, path, scale=0.1, sheet_scale=0.25):
     svg.save(path)
 
 
-def tiles_svg(tiler, res, path, scale=0.15):
-    """Each wall's tiled face: whole tiles, cut pieces with sizes, mitred edges, openings and centre lines."""
-    svg, y = Svg(), 10
+def _tiled_face(svg, tiler, res, f_, layout, ox, y, scale, background):
+    """One wall's tiles, openings, mitred edges and centre line; ox is where framing x = 0 is drawn."""
     room = tiler.room
     start_wall, start_x, _ = tiler.start()
+    x0, x1 = tiler.extent(f_, res.grout)
+    top = y + room.height * scale
+    bx0, bx1 = background
+    svg.rect(ox + bx0 * scale, y, (bx1 - bx0) * scale, room.height * scale, 'fill="#ccc"')
+    for tx0, ty0, tx1, ty1 in layout.full:
+        svg.rect(ox + tx0 * scale, top - ty1 * scale, (tx1 - tx0) * scale, (ty1 - ty0) * scale,
+                 'fill="#e8f0f7" stroke="#567" stroke-width="0.5"')
+    for pc in layout.pieces:
+        px, py, pw, ph = ox + pc.x0 * scale, top - pc.y1 * scale, pc.w * scale, pc.h * scale
+        colour = "#f2c4c4" if any(pc is q for q, *_ in layout.problems) else "#b9d3e8"
+        svg.rect(px, py, pw, ph, f'fill="{colour}" stroke="#345" stroke-width="0.5"')
+        if pw > 34 and ph > 10:
+            svg.text(px + pw / 2, py + ph / 2 + 3, f"{f(pc.w)}x{f(pc.h)}", 7, "middle")
+        elif ph > 34 and pw > 8:
+            svg.raw(f'<text x="{px + pw / 2 + 2:.1f}" y="{py + ph / 2:.1f}" font-size="7" '
+                    f'font-family="sans-serif" text-anchor="middle" '
+                    f'transform="rotate(-90 {px + pw / 2 + 2:.1f} {py + ph / 2:.1f})">{f(pc.w)}x{f(pc.h)}</text>')
+    for h in f_.holes:
+        svg.crossed(ox + h.x0 * scale, top - h.y1 * scale, (h.x1 - h.x0) * scale, (h.y1 - h.y0) * scale)
+        if h.reveal:
+            svg.rect(ox + h.x0 * scale, top - h.y1 * scale, (h.x1 - h.x0) * scale, (h.y1 - h.y0) * scale,
+                     'fill="none" stroke="#c00" stroke-width="2"')
+        if h.name:
+            svg.text(ox + (h.x0 + h.x1) / 2 * scale, top - (h.y0 + h.y1) / 2 * scale, h.name, 10, "middle", "#c33")
+    for x, m in ((x0, f_.mitre0), (x1, f_.mitre1)):
+        if m:
+            svg.line(ox + x * scale, y, ox + x * scale, top, 'stroke="#c00" stroke-width="2"')
+    if f_.index == start_wall or room.walls[f_.index].tiles.priority is not None:
+        cx = ox + (start_x if f_.index == start_wall else f_.target) * scale
+        svg.line(cx, y - 4, cx, top + 4, 'stroke="#06c" stroke-dasharray="5 3"')
+    return top
+
+
+CORNER_STYLE = {
+    "continue": ("#2a2", "continues"),
+    "fresh": ("#e80", "restarts"),
+    "seam": ("#c00", "seam"),
+    "open": ("#888", "open end"),
+}
+
+
+def _unwrapped(svg, tiler, res, y, scale):
+    """All walls laid flat in order round the room, joined at their corner lines."""
+    room = tiler.room
+    order = [i for chain in res.chains for i in chain]
+    kinds = dict((i, kind) for i, kind in res.corners)
+    svg.text(MARGIN, y + 12, "Unwrapped walls (laid flat in order round the room, joined at the corners)", 14,
+             bold=True)
+    y += 38
+    top = y + room.height * scale
+    cursor = MARGIN
+    for n, i in enumerate(order):
+        f_ = tiler.faces[i]
+        ox = cursor - f_.c0 * scale  # this wall's corner line meets the previous wall's
+        _tiled_face(svg, tiler, res, f_, res.walls[i], ox, y, scale, (f_.c0, f_.c1))
+        svg.text(cursor + (f_.c1 - f_.c0) * scale / 2, y - 6, f_.name, 12, "middle", bold=True)
+        if n == 0:
+            # the corner before the first wall drawn: the end of the last wall in the room
+            prev = (i - 1) % len(room.walls)
+            if room.closed and prev in kinds:
+                colour, label = CORNER_STYLE[kinds[prev]]
+                svg.line(cursor, y - 18, cursor, top + 6, f'stroke="{colour}" stroke-width="2.5"')
+        cursor += (f_.c1 - f_.c0) * scale
+        kind = kinds.get(i, "open")
+        colour, label = CORNER_STYLE[kind]
+        dash = '' if kind != "continue" else ' stroke-dasharray="6 3"'
+        svg.line(cursor, y - 18, cursor, top + 6, f'stroke="{colour}" stroke-width="2.5"{dash}')
+        svg.text(cursor, top + 18, label, 10, "middle", colour, bold=True)
+    svg.text(MARGIN, top + 36, "corner lines: dashed green, the pattern continues round it; orange, it restarts "
+                               "(fresh); red, the seam; grey, an open end", 10, colour="#555")
+    return top + 50
+
+
+def tiles_svg(tiler, res, path, scale=0.15, unwrapped_scale=0.1):
+    """Each wall's tiled face, then all the walls unwrapped to check how the corners continue."""
+    svg, y = Svg(), 10
+    room = tiler.room
     for f_, layout in zip(tiler.faces, res.walls):
-        x0, x1 = tiler.extent(f_, res.grout)
-        ox = MARGIN - f_.b0 * scale  # draw from the boarded start corner
         svg.text(MARGIN, y + 12, f"{f_.name}  (tiled face {f(f_.c1 - f_.c0)} mm)", 14, bold=True)
         y += 20
-        top = y + room.height * scale
-        svg.rect(ox + f_.b0 * scale, y, (f_.b1 - f_.b0) * scale, room.height * scale, 'fill="#ccc"')
-        for tx0, ty0, tx1, ty1 in layout.full:
-            svg.rect(ox + tx0 * scale, top - ty1 * scale, (tx1 - tx0) * scale, (ty1 - ty0) * scale,
-                     'fill="#e8f0f7" stroke="#567" stroke-width="0.5"')
-        for pc in layout.pieces:
-            px, py, pw, ph = ox + pc.x0 * scale, top - pc.y1 * scale, pc.w * scale, pc.h * scale
-            colour = "#f2c4c4" if any(pc is q for q, *_ in layout.problems) else "#b9d3e8"
-            svg.rect(px, py, pw, ph, f'fill="{colour}" stroke="#345" stroke-width="0.5"')
-            if pw > 34 and ph > 10:
-                svg.text(px + pw / 2, py + ph / 2 + 3, f"{f(pc.w)}x{f(pc.h)}", 7, "middle")
-            elif ph > 34 and pw > 8:
-                svg.raw(f'<text x="{px + pw / 2 + 2:.1f}" y="{py + ph / 2:.1f}" font-size="7" '
-                        f'font-family="sans-serif" text-anchor="middle" '
-                        f'transform="rotate(-90 {px + pw / 2 + 2:.1f} {py + ph / 2:.1f})">{f(pc.w)}x{f(pc.h)}</text>')
-        for h in f_.holes:
-            svg.crossed(ox + h.x0 * scale, top - h.y1 * scale, (h.x1 - h.x0) * scale, (h.y1 - h.y0) * scale)
-            if h.reveal:
-                svg.rect(ox + h.x0 * scale, top - h.y1 * scale, (h.x1 - h.x0) * scale, (h.y1 - h.y0) * scale,
-                         'fill="none" stroke="#c00" stroke-width="2"')
-            if h.name:
-                svg.text(ox + (h.x0 + h.x1) / 2 * scale, top - (h.y0 + h.y1) / 2 * scale, h.name, 10, "middle",
-                         "#c33")
-        for x, m in ((x0, f_.mitre0), (x1, f_.mitre1)):
-            if m:
-                svg.line(ox + x * scale, y, ox + x * scale, top, 'stroke="#c00" stroke-width="2"')
-        if f_.index == start_wall or room.walls[f_.index].tiles.priority is not None:
-            cx = ox + (start_x if f_.index == start_wall else f_.target) * scale
-            svg.line(cx, y - 4, cx, top + 4, 'stroke="#06c" stroke-dasharray="5 3"')
+        ox = MARGIN - f_.b0 * scale  # draw from the boarded start corner
+        top = _tiled_face(svg, tiler, res, f_, layout, ox, y, scale, (f_.b0, f_.b1))
         y = top + 34
     svg.text(MARGIN, y, "whole tiles pale; cut pieces blue with sizes; too small in red; mitred edges red; "
                         "dashed blue: centre line", 10, colour="#555")
+    y = _unwrapped(svg, tiler, res, y + 30, unwrapped_scale)
     svg.save(path)

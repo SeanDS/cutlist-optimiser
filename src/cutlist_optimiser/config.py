@@ -94,6 +94,7 @@ class TileSettings:
     top_gap: float = 0
     outside_corners: str = "mitre"  # mitre | overlap | trim
     start: str | None = None  # wall or wall.opening the layout is set out from
+    start_align: str = "either"  # tile (centred) | joint (half-centred) | either
     rows: list = field(default_factory=lambda: ["floor"])
     spare: float = 10  # percent extra to order
 
@@ -224,11 +225,12 @@ class _Table:
         if v is None or (v is default and default is not MISSING):
             return v
         if isinstance(v, bool) or not isinstance(v, (int, float)):
-            raise ConfigError(self.at(key), f"must be a number, not {v!r}")
+            raise ConfigError(self.at(key), f"must be a number, not {v!r}", f"write it as {key} = 123 (in mm)")
         if positive and v <= 0:
-            raise ConfigError(self.at(key), f"must be greater than 0, not {v:g}")
+            raise ConfigError(self.at(key), f"must be greater than 0, not {v:g}", "use a positive size in mm")
         if minimum is not None and v < minimum:
-            raise ConfigError(self.at(key), f"must be at least {minimum:g}, not {v:g}")
+            raise ConfigError(self.at(key), f"must be at least {minimum:g}, not {v:g}",
+                              f"use {minimum:g} or more")
         return float(v)
 
     def string(self, key, default=MISSING, choices=None):
@@ -272,7 +274,7 @@ TOP = ("height", "closed", "sheets", "tiles", "walls")
 SHEETS = ("size", "thickness", "kerf", "joint_gap", "bottom_gap", "top_gap", "min_piece",
           "noggin_joints", "noggin_tolerance")
 TILES = ("size", "thickness", "grout", "grout_options", "kerf", "pattern", "offset", "min_cut", "min_mitre",
-         "rotate", "bottom_gap", "top_gap", "outside_corners", "start", "rows", "spare")
+         "rotate", "bottom_gap", "top_gap", "outside_corners", "start", "start_align", "rows", "spare")
 WALL = ("name", "length", "measured_length", "measured_from", "studs", "noggins", "corner", "tiles", "stay_out")
 
 
@@ -362,6 +364,7 @@ def _tiles(t):
         top_gap=t.number("top_gap", 0, minimum=0),
         outside_corners=t.string("outside_corners", "mitre", ("mitre", "overlap", "trim")),
         start=t.string("start", None),
+        start_align=t.string("start_align", "either", ("tile", "joint", "either")),
         rows=t.raw("rows", ["floor"]),
         spare=t.number("spare", 10, minimum=0),
     )

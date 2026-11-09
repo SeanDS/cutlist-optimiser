@@ -33,6 +33,7 @@ rotate = false          # tiles keep their orientation when cut
 spare = 10              # percent extra to order for breakage
 outside_corners = "mitre" # mitre | overlap | trim (window reveals are always mitred)
 start = "South.window"  # the feature everything is set out from: a wall, or WALL.OPENING
+start_align = "either"  # tile (a tile centred on it), joint (a joint centred on it) or either
 rows = ["South.window.sill", "floor", "ceiling"]  # row height goals, most important first
 
 # Each wall:
@@ -58,24 +59,24 @@ name = "North"
 length = 3600
 studs = [600, 1200, 1800, 2400, 3000]
 noggins = [[1200], [1150], [1200], [1150], [1200], [1150]]
-corner = { type = "inside", through = "this" }
+corner = { type = "inside", through = "this", tiles = "fresh" }
 
 [[walls]]
-name = "East"
+name = "East"           # the first wall you see on entering: centred on its own
 length = 2450
 studs = [400, 800, 1200, 1600, 2000]
 noggins = [[1200], [1150], [1200], [1150], [1200], [1150]]
-corner = { type = "inside", through = "next" }
+corner = { type = "inside", through = "next", tiles = "fresh" }
 tiles = { priority = 1 }
 
 [[walls]]
-name = "South"
+name = "South"          # the window wall: tiles are set out from the window
 length = 3600
 studs = [600, 1200, 1650, 2250, 2850]
 noggins = [[800, 1600], [790, 1610], [], [800, 1600], [790, 1610], [800, 1600]]
-corner = { type = "inside", through = "this" }
+corner = { type = "inside", through = "this", tiles = "fresh" }
 stay_out = [
-    { name = "window", x = [1200, 1650], y = [900, 2100], reveal = { depth = 150 } },
+    { name = "window", x = [1200, 1650], y = [1000, 2100], reveal = { depth = 150 } },
 ]
 
 [[walls]]

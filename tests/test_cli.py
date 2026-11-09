@@ -47,3 +47,24 @@ def test_debug_shows_traceback(tmp_path):
 def test_missing_file(tmp_path):
     res = CliRunner().invoke(main, ["sheets", str(tmp_path / "nope.toml")])
     assert res.exit_code == 1 and "cannot read" in res.output
+
+
+TILED = ROOM + """
+[tiles]
+size = [600, 300]
+thickness = 10
+grout = 2
+"""
+
+
+def test_tiles_runs(tmp_path):
+    res = run(tmp_path, "tiles", "ROOM", "--svg", str(tmp_path / "t.svg"), text=TILED)
+    assert res.exit_code == 0, res.output
+    for section in ("PRIORITIES", "FINISHED SIZES", "SETTING OUT", "TILES", "CUT LIST", "efficiency", "cuts:"):
+        assert section in res.output
+    assert (tmp_path / "t.svg").read_text().startswith("<svg")
+
+
+def test_tiles_without_section_explains(tmp_path):
+    res = run(tmp_path, "tiles", "ROOM")
+    assert res.exit_code == 1 and "[tiles]" in res.output and "fix:" in res.output

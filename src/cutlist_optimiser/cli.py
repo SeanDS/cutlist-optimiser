@@ -116,3 +116,23 @@ def sheets(config, iterations, seed, svg, stagger):
     if svg:
         sheets_svg(solver, res, svg)
         click.echo(f"\nDrawing written to {em(svg)}")
+
+
+@main.command()
+@click.argument("config", metavar="ROOM.toml")
+@click.option("--svg", metavar="FILE", help="Also write a drawing of the tiled walls.")
+@common_options
+def tiles(config, svg):
+    """Set out tiles on the finished walls and count tiles and cuts."""
+    from .drawing import tiles_svg
+    from .report import tiles_report
+    from .tiles import Tiler
+
+    room = _load(config, "tiles")
+    tiler = Tiler(room)
+    show = progress_bar if console.is_terminal() else None
+    res = tiler.solve((lambda d, t, b: show(d, t, f"{b} short pieces")) if show else None)
+    tiles_report(tiler, res)
+    if svg:
+        tiles_svg(tiler, res, svg)
+        click.echo(f"\nDrawing written to {em(svg)}")

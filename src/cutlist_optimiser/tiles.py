@@ -466,7 +466,8 @@ class Tiler:
 
     # --- search --------------------------------------------------------------
 
-    def solve(self, progress=None):
+    def solve(self, progress=None, steps=16):
+        """Try every layout; `steps` is how many positions per tile are tried as fallbacks."""
         t = self.t
         start_wall, start_x, start_name = self.start()
         corners, seam_reason, chains, anchors = self.chains()
@@ -481,21 +482,21 @@ class Tiler:
                 base = (y - (self.th if kind == "top" else 0)) % py
                 vs.append(base)
                 if i == 0:
-                    vs.extend((base + k * py / 16) % py for k in range(1, 16))
+                    vs.extend((base + k * py / steps) % py for k in range(1, steps))
             vs = sorted({round(v, 3) for v in vs})
             anchor_us = []
             for anchor in anchors:
                 target = start_x if anchor == start_wall else self.faces[anchor].target
-                base = target - self.tw / 2
+                base = target - self.tw / 2  # tile centred; base + px / 2 is joint centred
                 if anchor == start_wall:  # the start feature is always centred on a tile or a joint
-                    steps = {"tile": (0,), "joint": (4,), "either": (0, 4)}[t.start_align]
+                    offsets = {"tile": (0,), "joint": (px / 2,), "either": (0, px / 2)}[t.start_align]
                 else:
-                    steps = range(8)
-                anchor_us.append([(base + k * px / 8) % px for k in steps])
+                    offsets = sorted({k * px / steps for k in range(steps)} | {px / 2})
+                anchor_us.append([(base + o) % px for o in offsets])
             for v in vs:
                 for us in itertools.product(*anchor_us):
                     combos.append((g, v, us))
-        info(f"trying {em(len(combos))} layouts ({len(t.grout_options)} grout widths, "
+        info(f"trying {em(len(combos))} layouts ({steps} positions per tile, {len(t.grout_options)} grout widths, "
              f"{len(chains)} chain{'s' if len(chains) > 1 else ''} of walls)")
         for chain, anchor in zip(chains, anchors):
             debug(f"chain {' -> '.join(self.faces[i].name for i in chain)}, set out from "

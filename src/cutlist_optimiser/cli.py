@@ -121,8 +121,11 @@ def sheets(config, iterations, seed, svg, stagger):
 @main.command()
 @click.argument("config", metavar="ROOM.toml")
 @click.option("--svg", metavar="FILE", help="Also write a drawing of the tiled walls.")
+@click.option("-n", "--steps", type=click.IntRange(2), default=16, show_default=True,
+              help="Positions per tile tried for row heights and wall layouts when the exact ones leave "
+                   "short pieces. Every combination is tried, so time grows quickly with this.")
 @common_options
-def tiles(config, svg):
+def tiles(config, svg, steps):
     """Set out tiles on the finished walls and count tiles and cuts."""
     from .drawing import tiles_svg
     from .report import tiles_report
@@ -131,7 +134,7 @@ def tiles(config, svg):
     room = _load(config, "tiles")
     tiler = Tiler(room)
     show = progress_bar if console.is_terminal() else None
-    res = tiler.solve((lambda d, t, b: show(d, t, f"{b} short pieces")) if show else None)
+    res = tiler.solve((lambda d, t, b: show(d, t, f"{b} short pieces")) if show else None, steps)
     tiles_report(tiler, res)
     if svg:
         tiles_svg(tiler, res, svg)

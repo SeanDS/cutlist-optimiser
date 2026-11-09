@@ -26,6 +26,7 @@ or from a local clone:
 
     cutlist-optimiser tiles example.toml                  # tile layout, counts and cut list
     cutlist-optimiser tiles example.toml --svg tiles.svg  # also draw the tiled walls
+    cutlist-optimiser tiles example.toml -n 32            # finer search (default 16 positions per tile)
 
     cutlist-optimiser -v ...                              # more messages (-vv for debugging)
     cutlist-optimiser --debug ...                         # show full tracebacks on errors
@@ -122,7 +123,7 @@ The SVG shows every wall with its studs, noggins (thick lines), stay-out areas (
    4. grout closest to nominal;
    5. fewest tiles.
 
-   Every grout width, row height and anchor position is tried.
+   The search isn't random: it tries every combination of grout width, row height and position for each chain of walls. Row heights are the ones that exactly meet each row goal, and walls are placed to be exactly centred. When those leave pieces below the minimum, it also tries fallback positions, `-n` per tile (default 16). A higher `-n` searches more finely for a layout without short pieces. The time grows quickly with `-n` when several chains of walls are placed independently; `-v` shows how many layouts are tried.
 6. **Packing.** Cut pieces, including the mitred reveal pieces, are packed onto tiles to reuse offcuts.
 
 The output covers:

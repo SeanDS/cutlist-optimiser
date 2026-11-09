@@ -69,3 +69,9 @@ def test_tiles_runs(tmp_path):
 def test_tiles_without_section_explains(tmp_path):
     res = run(tmp_path, "tiles", "ROOM")
     assert res.exit_code == 1 and "[tiles]" in res.output and "fix:" in res.output
+
+
+def test_tiles_steps(tmp_path):
+    res = run(tmp_path, "-v", "tiles", "ROOM", "-n", "4", text=TILED)
+    assert res.exit_code == 0 and "4 positions per tile" in res.output
+    assert run(tmp_path, "tiles", "ROOM", "-n", "1", text=TILED).exit_code == 2  # rejected by click

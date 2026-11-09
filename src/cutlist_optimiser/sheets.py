@@ -19,44 +19,11 @@ Model:
 
 import math
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
+from .config import ConfigError
+from .geometry import framing_x, sheet_offset
 from .packing import EPS, best_pack
-
-
-@dataclass
-class Settings:
-    height: float = 2400
-    sheet: tuple = (1200, 800)
-    bottom_gap: float = 2
-    top_gap: float = 0
-    kerf: float = 3
-    joint_gap: float = 3
-    min_piece: float = 100
-    noggin_joints: str = "prefer"  # prefer | require | ignore
-    noggin_tolerance: float = 10  # max distance of a joint from a noggin centre to count as on it
-    thickness: float = 0  # sheet thickness, used at inside/outside corners
-    stagger: float = 0  # min height difference between joints in neighbouring columns; 0 = off
-
-
-CORNERS = {"full": 0, "inside": 1, "outside": -1}  # sheet edge moves into the wall by this many thicknesses
-
-
-@dataclass
-class Wall:
-    name: str
-    studs: list  # separations between consecutive studs (centre to centre), wall end to wall end
-    noggins: list = field(default_factory=list)  # per stud bay: list of noggin centre heights from floor
-    stay_out: list = field(default_factory=list)  # (x0, x1, y0, y1) areas left unsheeted
-    start: str = "full"  # corner at the wall start: full | inside | outside
-    end: str = "full"  # corner at the wall end
-
-    @property
-    def positions(self):
-        pos = [0.0]
-        for s in self.studs:
-            pos.append(pos[-1] + s)
-        return pos
 
 
 @dataclass(frozen=True)
@@ -157,40 +124,45 @@ def stack_options(H, hmax, bays, min_piece, mode, tol=10, keep=8, ordered=False)
 
 
 class Solver:
-    def __init__(self, settings: Settings, walls: list, seed=0):
-        self.s = settings
-        self.walls = walls
+    def __init__(self, room, seed=0):
+        room.require_sheets()
+        self.room = room
+        self.s = s = room.sheets
+        self.walls = room.walls
         self.rng = random.Random(seed)
-        self.L, self.S = max(settings.sheet), min(settings.sheet)
-        self.bottom, self.top = settings.bottom_gap, settings.height - settings.top_gap
-        self.positions = [w.positions for w in walls]
+        self.L, self.S = max(s.size), min(s.size)
+        self.bottom, self.top = s.bottom_gap, room.height - s.top_gap
+        self.positions = [[0.0, *w.studs, w.length] for w in self.walls]
+        self.ends = []  # per wall: how far the sheets run past the framing at (start, end)
+        self.stay_out = []  # per wall: (x0, x1, y0, y1) framing rectangles left unsheeted
         self.forced = []  # per wall: stud indices that must carry a vertical joint
         self._segments = {}
         self._stacks = {}
         self._packs = {}
-        for w, pos in zip(walls, self.positions):
-            if not w.studs or any(s <= 0 or s > self.L + EPS for s in w.studs):
-                raise ValueError(f"wall {w.name!r}: stud separations must be > 0 and <= {self.L:g}")
-            for corner in (w.start, w.end):
-                if corner not in CORNERS:
-                    raise ValueError(f"wall {w.name!r}: corner must be one of {', '.join(CORNERS)}, not {corner!r}")
-                if corner != "full" and settings.thickness <= 0:
-                    raise ValueError(f"wall {w.name!r}: set the sheet thickness to use {corner!r} corners")
-            if not w.noggins:
-                w.noggins = [[] for _ in w.studs]
-            if len(w.noggins) != len(w.studs) or not all(isinstance(n, list) for n in w.noggins):
-                raise ValueError(f"wall {w.name!r}: noggins must be a list of {len(w.studs)} lists, "
-                                 f"one per stud bay (use [] for a bay without noggins)")
-            forced = set()
-            for x0, x1, y0, y1 in w.stay_out:
-                if not (x0 < x1 and y0 < y1):
-                    raise ValueError(f"wall {w.name!r}: stay-out area {x0:g}-{x1:g} x {y0:g}-{y1:g} is empty")
-                for x in (x0, x1):
-                    idx = [i for i, p in enumerate(pos) if abs(p - x) < 0.5]
+        for wi, (w, pos) in enumerate(zip(self.walls, self.positions)):
+            (c0, t0), (c1, t1) = room.start_corner(wi), room.end_corner(wi)
+            self.ends.append((sheet_offset(c0, t0, s.thickness), sheet_offset(c1, t1, s.thickness)))
+            for a, b in zip(pos, pos[1:]):
+                width = b - a + (self.ends[-1][0] if a == 0 else 0) + (self.ends[-1][1] if b == pos[-1] else 0)
+                if width > self.L + EPS:
+                    raise ConfigError(f"{w.where}.studs", f"the bay from {a:g} to {b:g} is {width:g} mm wide, "
+                                                          f"wider than a {self.L:g} mm sheet",
+                                      "add the studs in that bay (sheet edges can only land on studs)")
+            forced, rects = set(), []
+            for o in w.stay_out:
+                if not o.applies("sheets"):
+                    continue
+                x = [framing_x(room, wi, v) for v in o.x]
+                for v in x:
+                    idx = [i for i, p in enumerate(pos) if abs(p - v) < 0.5]
                     if not idx:
-                        raise ValueError(f"wall {w.name!r}: stay-out area edge x={x:g} is not on a stud "
-                                         f"(studs at {', '.join(f'{p:g}' for p in pos)})")
+                        raise ConfigError(o.where, f"its edge at x = {v:g} is not on a stud",
+                                          "stay-out edges must be on stud centres in sheet mode (studs at "
+                                          + ", ".join(f"{p:g}" for p in pos) + "); add the trimmer stud or "
+                                          "set only = \"tiles\" if sheets go behind it")
                     forced.add(idx[0])
+                rects.append((*x, *o.y))
+            self.stay_out.append(rects)
             self.forced.append(forced - {0, len(pos) - 1})
 
     # --- layout generation -------------------------------------------------
@@ -200,12 +172,12 @@ class Solver:
 
     def extent(self, wi, i, j):
         """Sheeted x range of the column between studs i and j, allowing for corners."""
-        pos, wall, t = self.positions[wi], self.walls[wi], self.s.thickness
+        pos = self.positions[wi]
         x0, x1 = pos[i], pos[j]
         if i == 0:
-            x0 += CORNERS[wall.start] * t
+            x0 -= self.ends[wi][0]
         if j == len(pos) - 1:
-            x1 -= CORNERS[wall.end] * t
+            x1 += self.ends[wi][1]
         return x0, x1
 
     def segments(self, wi, i, j):
@@ -214,7 +186,7 @@ class Solver:
         if key not in self._segments:
             x0, x1 = self.positions[wi][i], self.positions[wi][j]
             segs = [(self.bottom, self.top)]
-            for sx0, sx1, sy0, sy1 in self.walls[wi].stay_out:
+            for sx0, sx1, sy0, sy1 in self.stay_out[wi]:
                 if sx0 - 0.5 <= x0 and x1 <= sx1 + 0.5:
                     segs = [part for a, b in segs
                             for part in ((a, min(b, sy0)), (max(a, sy1), b)) if part[1] - part[0] > EPS]
@@ -238,10 +210,10 @@ class Solver:
             opts = stack_options(b - a, hmax, bays, self.s.min_piece, self.s.noggin_joints,
                                  self.s.noggin_tolerance, keep=40 if stagger else 8, ordered=stagger)
             if not opts:
-                raise ValueError(
-                    f"wall {self.walls[wi].name!r}: no way to put every horizontal joint on a noggin "
-                    f"between {a:g} and {b:g} mm for {hmax:g} mm tall pieces; add noggins or use "
-                    f"noggin_joints = 'prefer'")
+                raise ConfigError(
+                    self.walls[wi].where, f"no way to put every horizontal joint on a noggin between {a:g} "
+                                          f"and {b:g} mm high for {hmax:g} mm tall pieces",
+                    "add noggins at suitable heights, or set noggin_joints = \"prefer\" in [sheets]")
             self._stacks[key] = opts
         return self._stacks[key]
 
@@ -258,8 +230,9 @@ class Solver:
             cands = [j for j in range(i + 1, stop + 1)
                      if self.extent(wi, i, j)[1] - self.extent(wi, i, j)[0] <= self.L + EPS]
             if not cands:
-                raise ValueError(f"wall {self.walls[wi].name!r}: the bay starting at {pos[i]:g} is wider "
-                                 f"than a sheet once the corner is allowed for")
+                raise ConfigError(self.walls[wi].where, f"the bay starting at {pos[i]:g} is wider than a "
+                                                        f"sheet once the corner is allowed for",
+                                  "add a stud in that bay")
             if greedy:
                 j = cands[-1]
             else:

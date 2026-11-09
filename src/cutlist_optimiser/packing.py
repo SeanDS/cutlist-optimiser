@@ -65,11 +65,11 @@ def _split(free, w, h, kerf):
     return valid(rects), [c[:4] for c in cuts if c[4] > EPS]
 
 
-def _place(sheets, label, w, h, kerf):
+def _place(sheets, label, w, h, kerf, rotate=True):
     best = None
     for s in sheets:
         for i, (_, _, fw, fh) in enumerate(s.free):
-            for pw, ph, rot in ((w, h, False), (h, w, True)):
+            for pw, ph, rot in ((w, h, False), (h, w, True))[:2 if rotate else 1]:
                 if pw <= fw + EPS and ph <= fh + EPS:
                     score = (min(fw - pw, fh - ph), max(fw - pw, fh - ph))
                     if best is None or score < best[0]:
@@ -85,13 +85,13 @@ def _place(sheets, label, w, h, kerf):
     return True
 
 
-def pack(pieces, sheet_w, sheet_h, kerf, key):
-    """Pack (label, w, h) pieces in the order given by `key` (descending)."""
+def pack(pieces, sheet_w, sheet_h, kerf, key, rotate=True):
+    """Pack (label, w, h) pieces in the order given by `key` (descending); `rotate` lets pieces turn 90°."""
     sheets = []
     for label, w, h in sorted(pieces, key=key, reverse=True):
-        if not _place(sheets, label, w, h, kerf):
+        if not _place(sheets, label, w, h, kerf, rotate):
             sheets.append(Sheet(sheet_w, sheet_h))
-            if not _place(sheets[-1:], label, w, h, kerf):
+            if not _place(sheets[-1:], label, w, h, kerf, rotate):
                 raise ValueError(f"piece {label} ({w:g} x {h:g}) does not fit on a sheet")
     return sheets
 
@@ -104,7 +104,7 @@ ORDERS = [
 ]
 
 
-def best_pack(pieces, sheet_w, sheet_h, kerf):
+def best_pack(pieces, sheet_w, sheet_h, kerf, rotate=True):
     """Try several sort orders, return the packing with fewest sheets."""
-    results = [pack(pieces, sheet_w, sheet_h, kerf, key) for key in ORDERS]
+    results = [pack(pieces, sheet_w, sheet_h, kerf, key, rotate) for key in ORDERS]
     return min(results, key=lambda ss: (len(ss), -max(s.largest_offcut() for s in ss)))

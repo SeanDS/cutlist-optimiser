@@ -1,47 +1,90 @@
-# All sizes in mm.
-height = 2400           # floor to ceiling
-bottom_gap = 2          # gap left at the floor
-top_gap = 0             # gap left at the ceiling
-sheet = [1200, 800]
-kerf = 3                # saw blade width (use 0 for score-and-snap)
-joint_gap = 3           # gap between neighbouring sheets at a joint
-thickness = 12          # sheet thickness, used at inside/outside corners
-min_piece = 100         # no piece narrower/shorter than this in height
-noggin_joints = "prefer"  # prefer | require | ignore horizontal joints on noggins
-noggin_tolerance = 10   # a joint within this of a noggin centre counts as on it
+# Example room for both modes:
+#   cutlist-optimiser sheets example.toml
+#   cutlist-optimiser tiles example.toml
+#
+# All sizes are in mm, measured from the bare framing: x from the corner at the
+# start of each wall, y from the floor.
 
-# studs = distances between consecutive stud centres, from one wall end to the other.
-# Sheet edges can only land on these lines.
-# start / end = what happens at each corner:
-#   full    - sheets run to the end of the wall (default)
-#   inside  - inside corner, sheets stop short by the thickness to butt against the other wall's sheets
-#   outside - outside corner, sheets run past by the thickness to cover the other wall's sheet edge
-# noggins = one list per stud bay (gap between neighbouring studs), giving the noggin
-# centre heights from the floor in that bay. Use [] for a bay without noggins.
+height = 2400           # floor to ceiling
+closed = true           # walls are listed in order round the room; the last meets the first
+
+[sheets]
+size = [1200, 800]
+thickness = 12
+kerf = 3                # saw blade width (0 for score-and-snap)
+joint_gap = 3           # gap between neighbouring sheets (half taken off each edge)
+bottom_gap = 2          # gap at the floor
+top_gap = 0             # gap at the ceiling
+min_piece = 100         # shortest piece when a column is split in height
+noggin_joints = "prefer"  # prefer | require | ignore
+noggin_tolerance = 10   # a joint this close to a noggin centre counts as on it
+
+[tiles]
+size = [600, 300]       # width x height as laid
+thickness = 10          # tile + adhesive bed
+grout = 2               # nominal joint width, the same in every joint
+grout_options = [1.5, 2, 2.5, 3]  # widths the tool may switch to (one for the whole room)
+kerf = 2
+pattern = "brick"       # grid | brick
+offset = 0.5            # brick offset, as a fraction of the tile width
+min_cut = 60            # smallest cut piece allowed anywhere
+min_mitre = 80          # smallest piece with a mitred edge
+rotate = false          # tiles keep their orientation when cut
+spare = 10              # percent extra to order for breakage
+outside_corners = "mitre" # mitre | overlap | trim (window reveals are always mitred)
+start = "South.window"  # the feature everything is set out from: a wall, or WALL.OPENING
+rows = ["South.window.sill", "floor", "ceiling"]  # row height goals, most important first
+
+# Each wall:
+#   length          bare framing, corner to corner
+#   measured_length optional: the BOARDED face, corner to corner, measured before tiling
+#   measured_from   "framing" (default) or "boarded": where this wall's stay-out x positions
+#                   are measured from
+#   studs           stud centre positions from the wall start (the corner studs are implied)
+#   noggins         one list per stud bay of noggin centre heights from the floor; [] for none
+#   corner          the corner between this wall and the next:
+#                     type    inside | outside | open
+#                     through this | next: the wall whose sheets and tiles run to the corner line
+#                     tiles   continue (default) | fresh: carry the tile pattern round or restart it
+#   tiles           priority = 1 is the most important wall after the start feature;
+#                   centre_on = a stay-out name or an x position (default: the wall's centre)
+#   stay_out        areas left bare, each { name, x = [from, to], y = [from, to], reveal, only }
+#                     reveal = { depth = ... } for tiled, mitred reveals (boarded face to frame),
+#                              or "none"
+#                     only   = "sheets" or "tiles" to apply to one mode only
+
 [[walls]]
 name = "North"
-studs = [600, 600, 600, 600, 600, 600]
+length = 3600
+studs = [600, 1200, 1800, 2400, 3000]
 noggins = [[1200], [1150], [1200], [1150], [1200], [1150]]
+corner = { type = "inside", through = "this" }
 
 [[walls]]
 name = "East"
-start = "inside"
-end = "inside"
-studs = [400, 400, 400, 400, 400, 450]
+length = 2450
+studs = [400, 800, 1200, 1600, 2000]
 noggins = [[1200], [1150], [1200], [1150], [1200], [1150]]
+corner = { type = "inside", through = "next" }
+tiles = { priority = 1 }
 
 [[walls]]
 name = "South"
-studs = [600, 600, 450, 600, 600, 750]
+length = 3600
+studs = [600, 1200, 1650, 2250, 2850]
 noggins = [[800, 1600], [790, 1610], [], [800, 1600], [790, 1610], [800, 1600]]
-# areas left unsheeted, e.g. a window; x edges must be on studs, y from floor
+corner = { type = "inside", through = "this" }
 stay_out = [
-    { x = [1200, 1650], y = [900, 2100] },
+    { name = "window", x = [1200, 1650], y = [900, 2100], reveal = { depth = 150 } },
 ]
 
 [[walls]]
 name = "West"
-start = "inside"
-end = "inside"
-studs = [400, 400, 400, 400, 400, 450]
-noggins = [[1200], [1200], [1200], [1200], [1200], []]
+length = 2450
+studs = [400, 800, 1200, 2000]
+noggins = [[1200], [1200], [1200], [], []]
+corner = { type = "inside", through = "next" }
+tiles = { priority = 2 }
+stay_out = [
+    { name = "door", x = [1200, 2000], y = [0, 2040], reveal = "none" },
+]

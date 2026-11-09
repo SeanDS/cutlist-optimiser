@@ -8,7 +8,9 @@ version = "0.1.0"
 description = "Sheet material layout and cut list optimiser for stud walls"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = ["click>=8.1"]
 
 [project.scripts]
 cutlist-optimiser = "cutlist_optimiser.cli:main"
+[tool.pytest.ini_options]
+pythonpath = ["tests"]
